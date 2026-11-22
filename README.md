@@ -26,6 +26,7 @@ npm test               # end-to-end suite: builds, serves on :8795, runs tests/t
 - `npm test` installs Playwright + Chromium into `tests/` on first run (~150 MB). `npm run test:vault-fps` measures vault frame times while sliding.
 - `npm run images` regenerates the responsive AVIF/WebP copies and blur placeholders after you replace photos (needs Python 3 + Pillow with AVIF).
 - Deploying needs push access to the repo (GitHub login or token in your Git credential helper). See [docs/DEPLOY.md](docs/DEPLOY.md).
+- **Live catalogue (optional).** Copy `.env.example` to `.env.local` (dev) or `.env.production.local` (deploy) and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to read products from Supabase and enable the admin at `/admin/`. Left empty, the site uses `src/data.ts`. See [docs/ADMIN.md](docs/ADMIN.md). `npm run test:rls` and `npm run test:live` test the database rules and the live flow.
 - Opening `dist/index.html` from disk (file://) will not load the 3D module; use `npm run preview` or any static server (`./start-demo.sh`, `start-demo.bat`).
 
 ## Project structure
@@ -118,6 +119,7 @@ See [docs/CONTENT.md](docs/CONTENT.md) for everything still marked PLACEHOLDER.
 - [docs/DESIGN.md](docs/DESIGN.md): palette, fonts, logo rules, scene-by-scene flow with timings, animation specs, breakpoints, accessibility, performance tiers
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): components, 3D scene, state flow, data model, URL debug flags
 - [docs/DEPLOY.md](docs/DEPLOY.md): GitHub Pages, custom-domain DNS for www.thegodfatherclothings.in, canonical/meta URL switch
+- [docs/ADMIN.md](docs/ADMIN.md): the live product catalogue (Supabase): using `/admin/`, schema and security, setup, tests
 - [docs/CONTENT.md](docs/CONTENT.md): what to replace before launch, and the assumptions made
 
 © The Godfather Menswear. All rights reserved.

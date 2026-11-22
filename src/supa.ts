@@ -7,11 +7,10 @@ import { REMOTE_LQIP } from './Pic'
 const URL_ = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 export const liveEnabled = !!(URL_ && KEY) && !new URLSearchParams(location.search).has('bundled')
-let client: SupabaseClient | null = null
-export async function supa() {
-  if (!liveEnabled) return null
-  if (!client) { const { createClient } = await import('@supabase/supabase-js'); client = createClient(URL_!, KEY!, { auth: { persistSession: true, storageKey: 'gf-admin' } }) }
-  return client
+let client: Promise<SupabaseClient> | null = null
+export function supa(): Promise<SupabaseClient | null> {
+  if (!liveEnabled) return Promise.resolve(null)
+  return client ??= import('@supabase/supabase-js').then(({ createClient }) => createClient(URL_!, KEY!, { auth: { persistSession: true, storageKey: 'gf-admin' } }))
 }
 export type Row = {
   id: string; slug: string; name: string; collection: 'premium' | 'attire'; category: Category; price_from: number | null

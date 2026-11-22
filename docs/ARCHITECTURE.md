@@ -63,6 +63,19 @@ SAMPLE_PRICES: boolean
 
 WhatsApp links are built as `https://wa.me/<whatsapp>?text=<prefilled enquiry about the piece>`. Asset URLs are prefixed with `import.meta.env.BASE_URL` (Vite `base: './'`), so the build works under any sub-path.
 
+## Live catalogue (Supabase)
+
+`ITEMS` is one shared array. When `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are set at build time, `src/main.tsx` first applies the catalogue
+this browser cached last (localStorage `gf-catalogue-v1`), then `src/supa.ts` reads published rows (anon key, 2.5 s timeout) and swaps `ITEMS` in place
+(premium first, then attire, each by `sort`). The vault uses the first `vaultCount()` items (premium); the Attire Tour and detail sheet use all of them.
+Module-level counts in `App.tsx` and `three/Experience.tsx` re-read via `onCatalogue()`. A change that adds, removes or reorders pieces remounts `<App>`
+(key bump); an edit to existing pieces just re-renders. Updates arrive through a realtime subscription on `catalogue_rev` (bumped by a trigger on every
+product change) plus a re-read when the tab becomes visible. If the DB is unreachable nothing changes: cached copy or bundled `src/data.ts`.
+DB photos are absolute Storage URLs: `Pic` skips the local AVIF/512w variants for them and takes the blur placeholder from the row (`REMOTE_LQIP`);
+the flip view uses `front_cut_path` when present, else the photo, and `back_path` or the shared plain back. The admin is a second Vite entry
+(`admin/index.html` → `src/admin/`), so the store bundle carries none of its code; supabase-js is a lazy chunk and is left out entirely when the env is empty.
+Details, schema and security: [ADMIN.md](ADMIN.md).
+
 ## URL debug flags
 
 | Flag | Effect |
@@ -81,4 +94,5 @@ WhatsApp links are built as `https://wa.me/<whatsapp>?text=<prefilled enquiry ab
 - `test3d.js`: 89 checks on mobile (390×844, touch via CDP) and desktop (1440×900). Covers the gate, doors, storefront, Lorenzo, walk, vault navigation (keys, wheel, trackpad, drag, swipe), inspect, sheet, grid, focus, a11y basics and page errors. Run it with `npm test` (`URL=https://… node tests/test3d.js` for the live site).
 - `inspect-flip.js` (`npm run test:inspect`): all 12 items on 390×844 (touch) and 1440×900 (mouse). Checks that it opens on the front, a slow drag follows 1:1 and lands on the back, a fling flips, a short slow drag springs back, the button and arrow keys flip, and there are no page errors (146 checks). `SHOTS=1` saves mobile front/back.
 - `vaultfps.js`: rAF frame stats while sliding (`npm run test:vault-fps`). `vaultopen.js`: stills of the vault key and the doors opening.
+- `rls-local.mjs` (`npm run test:rls`): the Supabase migration in PGlite, 20 access-rule checks. `live-catalogue.js` (`npm run test:live`): site + admin against a mocked Supabase (see ADMIN.md).
 - `zeus/zeus.js`: the same checks on a real Windows laptop GPU.
