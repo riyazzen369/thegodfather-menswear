@@ -254,7 +254,7 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   await sleep(800);
   const fpsD = await d.evaluate(() => window.__fps);
   await d.locator('.slide[data-i="2"] .details').click(); await sleep(1500);
-  ok('desktop inspect opens', await d.locator('.inspect canvas, .inspect-flat').count()>0);
+  ok('desktop inspect opens (flip card)', await d.locator('.inspect .flip-card').count()>0);
   await d.keyboard.press('Escape'); await sleep(700);
   const fi = await d.evaluate(() => ({ open: !!document.querySelector('.inspect'), fe: document.activeElement && document.activeElement.className }));
   ok('Esc closes inspect, focus returns to View details', !fi.open && /details/.test(fi.fe||''), JSON.stringify(fi));

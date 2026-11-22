@@ -610,7 +610,7 @@ export default function App() {
       </div>
 
       {inspect !== null && <Suspense fallback={null}>
-        <Inspect item={ITEMS[inspect]} threeD={is3D && !reduced} enquireHref={enquire(ITEMS[inspect])}
+        <Inspect item={ITEMS[inspect]} reduced={reduced} enquireHref={enquire(ITEMS[inspect])}
           price={ITEMS[inspect].price != null ? `From ${inr.format(ITEMS[inspect].price!)}` : null}
           onClose={() => closeInspect()}
           onDetails={() => { const i = inspect, op = inspectFrom.current; closeInspect(() => { if (op) openSheet(i, op) }) }} />

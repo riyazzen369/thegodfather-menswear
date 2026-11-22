@@ -13,7 +13,8 @@ Everything marked `PLACEHOLDER` in `src/data.ts` must be replaced before launch.
 | Booking URL | `CONTACT.bookingUrl` | "Book a fitting"; empty = WhatsApp fitting request |
 | Prices | `ITEMS[].price` (INR, `null` = on request) and `SAMPLE_PRICES` | all current prices are samples; set `SAMPLE_PRICES = false` to drop the "sample price" label |
 | Product photos | `public/img/<slug>-1..4.webp` | `-1` 3:4 hero ~768×1024 (vault + grid), `-2` detail, `-3` closer crop, `-4` store-window crop (optional). Then run `npm run images` |
-| 3D inspect cut-outs | `public/img/cut/<slug>-1.webp` | transparent PNG/WebP of the garment (e.g. `rembg -m isnet-general-use`), ~680px tall |
+| Back photos (optional) | `ITEMS[].back` in `src/data.ts` | Shoot the back with the same framing as the front, remove the background (`rembg -m isnet-general-use in.jpg out.png`), save it as `public/img/cut/<slug>-back.webp` (~600×800, transparent), then set ``back: `${base}img/cut/<slug>-back.webp` `` on the item. Without it, the inspect view shows the shared plain back (the piece's outline in a plain fabric tone), the same for every piece |
+| Inspect cut-outs | `public/img/cut/<slug>-1.webp` | transparent PNG/WebP of the garment (e.g. `rembg -m isnet-general-use`), ~680px tall |
 | Copy | `ITEMS[].name/tagline/fabric/details/colours`, `TAILOR`, `HOST` | piece names, Lorenzo's lines |
 | Logo | `public/brand/` | the current logo is cut from a JPG (`assets-src/brand/logo.jpg`). Replace it with a vector/PNG master if the store has one, keep the file names, then `npm run images` |
 | Store photo | `public/store/store-1280.webp`, `store-1920.webp` | master: `assets-src/store/storefront.png` |

@@ -529,11 +529,6 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .inspect.open{opacity:1;transform:none}
 .inspect.closing{opacity:0;transform:scale(1.02)}
 .inspect-stage{position:relative;min-height:0}
-.inspect-gl{position:absolute!important;inset:0;opacity:0;transition:opacity .6s var(--ease)}
-.inspect.ready .inspect-gl{opacity:1}
-.inspect-flat{position:absolute;inset:6% 10%;display:grid;place-items:center;perspective:1200px}
-.inspect-flat img{max-height:100%;max-width:100%;filter:drop-shadow(0 30px 30px rgba(0,0,0,.6));
-  transform:rotateY(calc(var(--tx,0) * 14deg)) rotateX(calc(var(--ty,0) * -8deg));transition:transform .4s var(--ease)}
 .inspect-panel{padding:16px 22px calc(var(--sab) + 20px);background:linear-gradient(to top, rgba(7,4,4,.96), rgba(7,4,4,.7));color:#efe6dc}
 .inspect-kicker{font-size:.66rem;letter-spacing:.2em;text-transform:uppercase;color:#e9c46a;margin:0 0 6px}
 .inspect-panel h2{font-family:var(--display, Georgia, serif);font-size:clamp(1.5rem,4.6vw,2.4rem);margin:0 0 4px}
@@ -553,3 +548,23 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .ask.visit{text-decoration:none}
 .addr a{color:inherit;text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(242,196,107,.5)}
 .addr a:hover{color:#f2c46b}
+
+/* inspect: drag-to-flip card (CSS 3D, one composited layer) */
+.flip-stage{display:grid;place-items:center;perspective:1500px;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;overflow:hidden}
+.flip-stage:active{cursor:grabbing}
+.flip-card{position:relative;height:min(78%,720px);aspect-ratio:3/4;transform-style:preserve-3d;will-change:transform;opacity:0;transition:opacity .5s var(--ease)}
+.inspect.ready .flip-card{opacity:1}
+.flip-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;display:grid;place-items:center}
+.flip-face img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 26px 26px rgba(0,0,0,.55));pointer-events:none}
+.flip-back{transform:rotateY(180deg)}
+/* the shared plain back: the piece's own outline, mirrored, in one plain fabric tone with a soft centre seam */
+.flip-plain{width:100%;height:100%;transform:scaleX(-1);
+  -webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;
+  background:linear-gradient(90deg,rgba(0,0,0,.35),transparent 18%,transparent 82%,rgba(0,0,0,.35)),
+    linear-gradient(90deg,transparent calc(50% - 1px),rgba(0,0,0,.28) 50%,transparent calc(50% + 1px)),
+    radial-gradient(ellipse 60% 45% at 50% 30%,#4a3f37,#2a231f 70%,#1c1715)}
+.flip-plinth{position:absolute;left:50%;bottom:7%;width:min(70%,520px);aspect-ratio:5/1;transform:translateX(-50%);border-radius:50%;
+  background:radial-gradient(ellipse at center,rgba(0,0,0,.6),rgba(0,0,0,0) 65%),radial-gradient(ellipse at center,transparent 62%,rgba(242,196,107,.55) 64%,transparent 68%)}
+.flip-face-label{position:absolute;left:50%;bottom:calc(var(--sab,0px) + 10px);transform:translateX(-50%);margin:0;font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(239,230,220,.5)}
+.flip-face-label .on{color:#f2c46b}
+@media (prefers-reduced-motion: reduce){ .flip-card{transition:none} }

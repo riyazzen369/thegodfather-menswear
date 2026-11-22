@@ -19,6 +19,9 @@ export type Item = {
   category: Category
   name: string; tagline: string; fabric: string; price: number | null
   images: Img[]; colours: { name: string; hex: string }[]
+  /* optional photo of the back (transparent cut-out, same framing as public/img/cut/<slug>-1.webp).
+     Without it the inspect view shows the shared plain back: the piece's own outline, mirrored, in a plain fabric tone. */
+  back?: string
   details: { fit: string; madeToMeasure: string; delivery: string }
 }
 

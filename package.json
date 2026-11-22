@@ -12,7 +12,7 @@
     "test": "bash tests/run.sh",
     "test:vault-fps": "bash tests/run.sh vaultfps.js",
     "images": "python3 scripts/imgs.py",
-    "test:inspect": "bash tests/run.sh inspect-angles.js"
+    "test:inspect": "bash tests/run.sh inspect-flip.js"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
