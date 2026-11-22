@@ -875,8 +875,12 @@ function Health({ onFail }: { onFail: (why: string) => void }) {
     c.addEventListener('webglcontextlost', lost)
     return () => c.removeEventListener('webglcontextlost', lost)
   }, [gl, onFail])
+  const lastF = useRef(0)
   useFrame(() => {
     const s = st.current, n = now()
+    /* ~1 s between frames means the browser is throttling a hidden/occluded window, not a slow GPU: don't count it */
+    const gap = n - lastF.current; lastF.current = n
+    if (gap > 700) { s.slow = 0; s.lastCheck = n; return }
     if (s.failed || n - s.lastCheck < 1000) return
     s.lastCheck = n
     const wt = walkTime(), settled = rig.view === 'wardrobe' && (wt < 0 || wt > WALK_MS / 1000 + 0.8) && (!rig.descentAt || n - rig.descentAt > DESCENT_MS + 800) && document.visibilityState === 'visible'
