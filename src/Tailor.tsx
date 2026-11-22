@@ -69,8 +69,8 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
       <div className="sf-cam" aria-hidden="true">
         <div className="sf-plate" ref={plate}>
           <img className="sf-photo" src={store} alt="" decoding="async" />
-          <img className="sf-neon" src={store} alt="" decoding="async" />
           <img className="sf-neon glow" src={store} alt="" decoding="async" />
+          <img className="sf-neon" src={store} alt="" decoding="async" />
           <img className="sf-wet" src={store} alt="" decoding="async" />
           <div className="sf-door" />
         </div>
