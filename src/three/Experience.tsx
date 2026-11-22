@@ -772,6 +772,8 @@ function DomSync() {
     const sp = (camera.position.x - w.camOffset) / w.spacing, pitch = w.spacing / w.unit, slideW = rig.layout.slideW
     const dy = camera.position.y / w.unit * 0.5
     els.forEach((el, i) => {
+      /* only pieces near the camera move; translating far ones would widen the track's scroll area and feed back into the scroll */
+      if (i >= LAST || Math.abs(i - sp) > 2.5) { if (last.current[i] !== 0) { el.style.transform = ''; last.current[i] = 0 } return }
       const tx = (i - sp) * pitch - (i - rig.scrollP) * slideW
       if (Math.abs(tx - (last.current[i] ?? 1e9)) > 0.05 || Math.abs(dy - (last.current[100] ?? 1e9)) > 0.05) {
         el.style.transform = `translate3d(${tx.toFixed(2)}px,${dy.toFixed(2)}px,0)`; last.current[i] = tx
