@@ -46,6 +46,9 @@ export default function App() {
   const [mode, setMode] = useState<'3d' | '2d'>(() => (!reduced && webglOK() && !new URLSearchParams(location.search).has('2d')) ? '3d' : '2d')
   const is3D = mode === '3d'
   const [arrive, setArrive] = useState(false)
+  /* start the 3D scene once the gate's logo has faded in, so loading it can't stutter the first second */
+  const [glMount, setGlMount] = useState(false)
+  useEffect(() => { const id = window.setTimeout(() => setGlMount(true), viewRef.current === 'gate' ? 900 : 0); return () => clearTimeout(id) }, [])
   const [view, setViewState] = useState<'gate' | 'transition' | 'tailor' | 'walk' | 'wardrobe' | 'grid'>(() => store.get('gf-entered') ? 'tailor' : 'gate')
   const viewRef = useRef(view)
   const setView = (v: typeof view) => { viewRef.current = v; rig.view = v; setViewState(v) }
@@ -502,7 +505,7 @@ export default function App() {
 
   return (
     <div className={`app ${is3D ? 'is3d' : 'is2d'} view-${view} ${view === 'wardrobe' ? 'vault' : ''}`}>
-      {is3D && <Suspense fallback={null}><Experience paused={view === 'grid' || view === 'gate' || (view === 'tailor' && tailor === 'in')} onFail={glFail} /></Suspense>}
+      {is3D && glMount && <Suspense fallback={null}><Experience paused={view === 'grid' || view === 'gate' || (view === 'tailor' && tailor === 'in')} onFail={glFail} /></Suspense>}
       {!is3D && <div className="room2d" aria-hidden="true" />}
 
       {/* SCREEN 3: THE SECRET WARDROBE (accessible DOM over the 3D room) */}

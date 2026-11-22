@@ -40,7 +40,7 @@ const PHOTO_Z = 1.2, CURTAIN_Z = 2.6
 const DESCENT_MS = 2400
 const QS = new URLSearchParams(location.search)
 const HQ = QS.has('hq') || QS.get('q') != null            // debug: never drop quality
-/* ?q=low|med|high forces a quality level (otherwise auto: start high, drop to low if the frame rate declines)
+/* ?q=low|med|high pins a quality tier (see TIER below; otherwise auto, starting at med)
    low:  dpr 1, plain marble floor, no depth of field
    med:  dpr up to 1.25, reflective floor at reduced resolution, no depth of field
    high: dpr up to 1.75, full reflections, depth of field */
@@ -275,7 +275,8 @@ function Gate() {
 function Storefront() {
   const [tex, setTex] = useState<THREE.Texture | null>(null)
   const g = useRef<THREE.Group>(null), cl = useRef<THREE.Mesh>(null), cr = useRef<THREE.Mesh>(null)
-  useEffect(() => { const id = setTimeout(() => loadTex(STORE(window.innerWidth), setTex), 300); return () => clearTimeout(id) }, [])
+  const { gl } = useThree()
+  useEffect(() => { const id = setTimeout(() => loadTex(STORE(window.innerWidth), t => { gl.initTexture(t); setTex(t) }), 300); return () => clearTimeout(id) }, [gl])
   const mk = (v0: number, v1: number) => new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, toneMapped: false,
     uniforms: { uMap: { value: null }, uO: { value: 0 } },
@@ -575,14 +576,16 @@ function Walk({ low }: { low: boolean }) {
     mats.cone.uniforms.uI.value = 0.55
     void low
   })
-  /* compile the walk's shaders up front, so the first step through the doors doesn't hitch */
+  /* compile every shader up front (entry, walk, vault), so no scene hitches the first time it appears */
   const { gl, scene, camera } = useThree()
   useEffect(() => {
     const id = window.setTimeout(() => {
       const grp = g.current; if (!grp) return
-      grp.visible = true
+      /* everything, including the storefront and curtains that are hidden at the gate */
+      const hidden: THREE.Object3D[] = []
+      scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true } })
       try { gl.compile(scene, camera) } catch { /* not fatal */ }
-      grp.visible = false
+      hidden.forEach(o => { o.visible = false })
     }, 1200)
     return () => clearTimeout(id)
   }, [gl, scene, camera])
@@ -610,14 +613,13 @@ function Atmosphere({ path }: { path: { current: WalkPath | null } }) {
 }
 
 /* ---------------- the room ---------------- */
-function Room({ low }: { low: boolean }) {
+function Room({ low, res }: { low: boolean; res: number }) {
   const wood = useMemo(() => brassTexture(), [])
   const marble = useMemo(() => marbleTexture(), [])
   const wallMat = useMemo(() => new THREE.MeshBasicMaterial({ map: wood, color: new THREE.Color(0.85, 0.74, 0.6) }), [wood])
   const stripMat = useMemo(() => new THREE.MeshBasicMaterial({ color: new THREE.Color(3.6, 2.3, 0.8), toneMapped: false }), [])
   const endL = useMemo(() => velvetMat(), []), endR = useMemo(() => velvetMat(), [])
   const g = useRef<THREE.Group>(null)
-  const { size } = useThree()
   useFrame(() => {
     const w = world(), span = (LAST + 2) * w.spacing + 40
     const [wall, s1, s2, floor, cL, cR] = g.current!.children as THREE.Mesh[]
@@ -633,7 +635,6 @@ function Room({ low }: { low: boolean }) {
     cR.scale.set(4, ch, 1); cR.position.set(camXAt(LAST, w) + w.visW * 0.5 + 2.6, w.floorY + ch / 2, PZ - 0.3)
     endL.uniforms.uT.value = endR.uniforms.uT.value = now() / 1000
   })
-  const res = low ? 128 : Q === 'med' || size.width < 700 ? 256 : 512
   return (
     <group ref={g}>
       <mesh material={wallMat}><planeGeometry /></mesh>
@@ -641,7 +642,7 @@ function Room({ low }: { low: boolean }) {
       <mesh material={stripMat}><planeGeometry /></mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry />
-        {low
+        {low || !res
           ? <meshBasicMaterial map={marble} color="#8a7a70" />
           : <MeshReflectorMaterial resolution={res} mirror={0.7} blur={[280, 90]} mixBlur={1} mixStrength={3.4} depthScale={1.1}
               minDepthThreshold={0.4} maxDepthThreshold={1.4} roughness={0.85} metalness={0.5} color="#2a2420" map={marble} />}
@@ -801,24 +802,33 @@ function Focus({ fx }: { fx: { current: DepthOfFieldEffect | null } }) {
   return null
 }
 
+/* Quality tiers. Auto starts at med and moves one step at a time on the measured frame rate:
+   up to high on fast GPUs (sustained 58+ fps), down to low under ~45 fps. ?q= pins a tier. */
+type Tier = 'low' | 'med' | 'high'
+const TIER = {
+  low: { dpr: 1, dof: false, reflect: 0, bloomLevels: 5 },
+  med: { dpr: 1.25, dof: false, reflect: 256, bloomLevels: 6 },
+  high: { dpr: 1.75, dof: true, reflect: 512, bloomLevels: 8 }
+} as const
 export default function Experience({ onFail, paused = false }: { onFail: (why: string) => void; paused?: boolean }) {
-  const [low, setLow] = useState(Q === 'low')
-  rig.low = low; rig.quality = Q ?? (low ? 'low' : 'auto-high')
+  const [tier, setTier] = useState<Tier>(Q ?? 'med')
+  const T_ = TIER[tier], low = tier === 'low'
+  const dpr = Math.min(T_.dpr, window.devicePixelRatio || 1)
+  rig.low = low; rig.quality = (Q ? 'pinned ' : 'auto ') + tier; rig.dpr = +dpr.toFixed(2)
   const path = useRef<WalkPath | null>(null)
   const dof = useRef<DepthOfFieldEffect | null>(null)
-  const [dpr, setDpr] = useState(Math.min(Q === 'low' ? 1 : Q === 'med' ? 1.25 : 1.75, window.devicePixelRatio || 1))
-  rig.dpr = dpr
-  const dofOn = !low && Q !== 'med'
+  const down = () => setTier(t => t === 'high' ? 'med' : 'low')
+  const up = () => setTier(t => t === 'low' ? 'med' : 'high')
   return (
     <Canvas className="gl" dpr={dpr} frameloop={paused ? 'demand' : 'always'} gl={{ antialias: false, alpha: false, powerPreference: 'high-performance', stencil: false }}
       camera={{ fov: FOV, near: 0.1, far: 80, position: [0, 0, GATE_CAM] }}
       onCreated={({ gl, scene }) => { gl.setClearColor('#050303'); scene.fog = new THREE.Fog('#050303', 9, 30) }}
       aria-hidden="true">
-      {!HQ && <PerformanceMonitor onDecline={() => { setDpr(1); setLow(true); rig.low = true }} flipflops={2} onFallback={() => { setDpr(1); setLow(true); rig.low = true }} />}
+      {!HQ && <PerformanceMonitor bounds={() => [45, 58]} flipflops={4} onDecline={down} onIncline={up} onFallback={() => { if (rig.fps && rig.fps < 45) setTier('low') }} />}
       <ambientLight intensity={1.2} />
       <CameraRig path={path} />
       <Atmosphere path={path} />
-      <Room low={low} />
+      <Room low={low} res={T_.reflect} />
       {ITEMS.map((_, i) => <Piece key={i} i={i} />)}
       <Walk low={low} />
       <Dust />
@@ -828,10 +838,10 @@ export default function Experience({ onFail, paused = false }: { onFail: (why: s
       <Stats />
       <Health onFail={onFail} />
       <DomSync />
-      {dofOn && <Focus fx={dof} />}
+      {T_.dof && <Focus fx={dof} />}
       <EffectComposer multisampling={0} enableNormalPass={false}>
-        {dofOn ? <DepthOfField ref={dof} focusDistance={D} focusRange={3} bokehScale={0} resolutionScale={0.5} /> : <></>}
-        <Bloom mipmapBlur intensity={low ? 0.8 : 1.15} luminanceThreshold={0.95} luminanceSmoothing={0.2} radius={0.75} />
+        {T_.dof ? <DepthOfField ref={dof} focusDistance={D} focusRange={3} bokehScale={0} resolutionScale={0.5} /> : <></>}
+        <Bloom mipmapBlur levels={T_.bloomLevels} intensity={low ? 0.8 : 1.15} luminanceThreshold={0.95} luminanceSmoothing={0.2} radius={0.75} />
         <Noise premultiply blendFunction={BlendFunction.SCREEN} opacity={0.22} />
         <Vignette offset={0.28} darkness={0.82} />
       </EffectComposer>
