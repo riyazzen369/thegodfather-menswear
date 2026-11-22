@@ -37,7 +37,7 @@ Everything marked `PLACEHOLDER` in `src/data.ts` must be replaced before launch.
 | `store/` | storefront photo (PNG master + JPG variants) and the generated HD store variants (collection, animal print) |
 | `reference/` | look-and-feel references: hero/suit/blazer/animal reference crops and stills from the store's Instagram reel |
 | `products/` | generated product originals (8 pieces × 4 views) and the store-photo crops |
-| `lorenzo/` | Lorenzo figure previews and the hand/key study. The published, keyed Lorenzo and walk atlas are at full working resolution in `public/tailor/` and `public/walk/` |
+| `lorenzo/` | Lorenzo figure previews, the hand/key study, and `lorenzo-doorman.jpg` (the generated doorman pose used at the wardrobe gate). The published, keyed Lorenzo and walk atlas are at full working resolution in `public/tailor/` and `public/walk/` |
 | `concept-stills/` | early concept frames (landing host, door opening, bunker wardrobe, shirt showcase) |
 
 The one-off image prep scripts are in `scripts/asset-prep/`. The responsive image pipeline is `scripts/imgs.py`.

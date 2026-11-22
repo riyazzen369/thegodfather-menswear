@@ -162,6 +162,123 @@ function brassTexture() {
   const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4
   return t
 }
+/* ---- the palace wardrobe gate: carved honey-wood leaves with gilded relief, a gilded architrave, white marble ---- */
+function goldGrad(g: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) {
+  const gr = g.createLinearGradient(x0, y0, x1, y1)
+  gr.addColorStop(0, '#fff1b8'); gr.addColorStop(0.35, '#e8b852'); gr.addColorStop(0.7, '#b07a22'); gr.addColorStop(1, '#6e4612')
+  return gr
+}
+/* draw a shape twice: a dark offset (the carved shadow) and the gilt on top, so it reads as relief */
+function relief(g: CanvasRenderingContext2D, draw: () => void, fill: string | CanvasGradient, lw = 0) {
+  g.save(); g.translate(2.5, 3); g.fillStyle = 'rgba(60,34,8,.55)'; g.strokeStyle = 'rgba(60,34,8,.55)'; draw(); if (lw) { g.lineWidth = lw; g.stroke() } else g.fill(); g.restore()
+  g.fillStyle = fill; g.strokeStyle = fill; draw(); if (lw) { g.lineWidth = lw; g.stroke() } else g.fill()
+}
+function rosette(g: CanvasRenderingContext2D, cx: number, cy: number, R: number) {
+  relief(g, () => { g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2) }, goldGrad(g, cx - R, cy - R, cx + R, cy + R), 7)
+  relief(g, () => { g.beginPath(); g.arc(cx, cy, R * 0.86, 0, Math.PI * 2) }, goldGrad(g, cx - R, cy - R, cx + R, cy + R), 2.5)
+  /* sunburst rays */
+  for (let k = 0; k < 48; k++) {
+    const a = (k / 48) * Math.PI * 2, r0 = R * 0.5, r1 = R * (k % 2 ? 0.74 : 0.82)
+    relief(g, () => { g.beginPath(); g.moveTo(cx + Math.cos(a - 0.03) * r0, cy + Math.sin(a - 0.03) * r0); g.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); g.lineTo(cx + Math.cos(a + 0.03) * r0, cy + Math.sin(a + 0.03) * r0); g.closePath() }, goldGrad(g, cx - R, cy - R, cx + R, cy + R))
+  }
+  /* two rings of petals */
+  for (const [n, rr, len, wid] of [[16, 0.36, 0.17, 0.07], [12, 0.2, 0.12, 0.06]] as const) {
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + (n === 12 ? 0.13 : 0)
+      relief(g, () => { g.beginPath(); g.ellipse(cx + Math.cos(a) * R * rr, cy + Math.sin(a) * R * rr, R * len, R * wid, a, 0, Math.PI * 2) }, goldGrad(g, cx - R * 0.5, cy - R * 0.5, cx + R * 0.5, cy + R * 0.5))
+    }
+  }
+  relief(g, () => { g.beginPath(); g.arc(cx, cy, R * 0.1, 0, Math.PI * 2) }, '#fff0b0')
+}
+/* a scroll-and-acanthus frieze, mirrored about its centre */
+function frieze(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  const cx = x + w / 2, cy = y + h / 2, gr = goldGrad(g, x, y, x + w, y + h)
+  for (const s of [-1, 1]) {
+    relief(g, () => {
+      g.beginPath(); g.moveTo(cx + s * h * 0.25, cy)
+      g.bezierCurveTo(cx + s * w * 0.18, cy - h * 0.55, cx + s * w * 0.3, cy + h * 0.45, cx + s * w * 0.42, cy - h * 0.05)
+      g.arc(cx + s * w * 0.42 - s * h * 0.12, cy - h * 0.05, h * 0.12, 0, Math.PI * 1.6, s < 0)
+    }, gr, 4.5)
+    for (let k = 0; k < 5; k++) {
+      const u = 0.1 + k * 0.075, lx = cx + s * w * u, ly = cy + (k % 2 ? 1 : -1) * h * 0.2
+      relief(g, () => { g.beginPath(); g.ellipse(lx, ly, h * 0.16, h * 0.07, s * (k % 2 ? 0.7 : -0.7), 0, Math.PI * 2) }, gr)
+    }
+  }
+  rosette(g, cx, cy, h * 0.3)
+}
+function raisedPanel(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  /* bevel: light from the top left, shade to the bottom right */
+  const b = 14
+  g.fillStyle = 'rgba(255,226,160,.28)'; g.beginPath(); g.moveTo(x, y); g.lineTo(x + w, y); g.lineTo(x + w - b, y + b); g.lineTo(x + b, y + b); g.lineTo(x + b, y + h - b); g.lineTo(x, y + h); g.fill()
+  g.fillStyle = 'rgba(70,38,10,.42)'; g.beginPath(); g.moveTo(x + w, y); g.lineTo(x + w, y + h); g.lineTo(x, y + h); g.lineTo(x + b, y + h - b); g.lineTo(x + w - b, y + h - b); g.lineTo(x + w - b, y + b); g.fill()
+  relief(g, () => { g.beginPath(); g.rect(x + b + 6, y + b + 6, w - 2 * b - 12, h - 2 * b - 12) }, goldGrad(g, x, y, x + w, y + h), 4)
+}
+function woodBase(g: CanvasRenderingContext2D, W: number, H: number) {
+  const gr = g.createLinearGradient(0, 0, W, 0)
+  gr.addColorStop(0, '#9c6428'); gr.addColorStop(0.5, '#cf9447'); gr.addColorStop(1, '#a86d2e')
+  g.fillStyle = gr; g.fillRect(0, 0, W, H)
+  for (let i = 0; i < 140; i++) {
+    g.strokeStyle = `rgba(${90 + Math.random() * 60},${50 + Math.random() * 30},${15 + Math.random() * 15},${0.05 + Math.random() * 0.1})`
+    g.lineWidth = 0.6 + Math.random() * 2
+    let x = Math.random() * W; g.beginPath(); g.moveTo(x, 0)
+    for (let y = 0; y <= H; y += 40) { x += Math.sin(y * 0.01 + i) * 2 + (Math.random() - 0.5) * 2; g.lineTo(x, y) }
+    g.stroke()
+  }
+}
+function carvedLeafTexture() {
+  const W = 512, H = 1130, c = document.createElement('canvas'); c.width = W; c.height = H
+  const g = c.getContext('2d')!
+  woodBase(g, W, H)
+  const m = 42, iw = W - 2 * m
+  let y = 40
+  const rows: [number, 'frieze' | 'square' | 'tall'][] = [[120, 'frieze'], [iw, 'square'], [120, 'frieze'], [H - 40 - 40 - 120 - iw - 120 - 3 * 28, 'tall']]
+  for (const [h, kind] of rows) {
+    raisedPanel(g, m, y, iw, h)
+    if (kind === 'frieze') frieze(g, m + 26, y + 24, iw - 52, h - 48)
+    else if (kind === 'square') { rosette(g, W / 2, y + h / 2, iw * 0.36); for (const [qx, qy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) rosette(g, W / 2 + qx * iw * 0.39, y + h / 2 + qy * iw * 0.39, 16) }
+    else { relief(g, () => { g.beginPath(); g.ellipse(W / 2, y + h / 2, iw * 0.3, h * 0.36, 0, 0, Math.PI * 2) }, goldGrad(g, m, y, m + iw, y + h), 4); rosette(g, W / 2, y + h / 2, iw * 0.14) }
+    y += h + 28
+  }
+  /* gilded edge beads */
+  g.fillStyle = goldGrad(g, 0, 0, 20, H); g.fillRect(0, 0, 8, H); g.fillRect(W - 8, 0, 8, H)
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8
+  return t
+}
+/* gilded carved moulding (bead + egg-and-dart), drawn along the texture's long side */
+function architraveTexture(horizontal: boolean) {
+  const L = 1024, S = 128, c = document.createElement('canvas'); c.width = horizontal ? L : S; c.height = horizontal ? S : L
+  const g = c.getContext('2d')!
+  g.save(); if (horizontal) { g.translate(L, 0); g.rotate(Math.PI / 2) }
+  g.fillStyle = goldGrad(g, 0, 0, S, 0); g.fillRect(0, 0, S, L)
+  g.fillStyle = 'rgba(80,46,10,.5)'; g.fillRect(36, 0, 3, L); g.fillRect(92, 0, 3, L)
+  for (let y = 0; y < L; y += 32) {
+    relief(g, () => { g.beginPath(); g.ellipse(64, y + 16, 18, 13, 0, 0, Math.PI * 2) }, goldGrad(g, 40, y, 90, y + 32))
+    relief(g, () => { g.beginPath(); g.arc(18, y + 16, 7, 0, Math.PI * 2) }, '#f5d27a')
+    relief(g, () => { g.beginPath(); g.arc(110, y + 16, 7, 0, Math.PI * 2) }, '#f5d27a')
+  }
+  g.restore()
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4
+  return t
+}
+/* white and cream marble with soft grey veining */
+function whiteMarbleTexture() {
+  const N = 1024, c = document.createElement('canvas'); c.width = N; c.height = N
+  const g = c.getContext('2d')!
+  g.fillStyle = '#ece5d8'; g.fillRect(0, 0, N, N)
+  for (let i = 0; i < 70; i++) { const r = 60 + Math.random() * 220; const gr = g.createRadialGradient(0, 0, 0, 0, 0, r); gr.addColorStop(0, Math.random() < 0.5 ? 'rgba(255,252,244,.35)' : 'rgba(214,204,188,.25)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.save(); g.translate(Math.random() * N, Math.random() * N); g.fillStyle = gr; g.fillRect(-r, -r, 2 * r, 2 * r); g.restore() }
+  g.filter = 'blur(1.5px)'
+  for (let k = 0; k < 18; k++) {
+    g.strokeStyle = `rgba(${120 + Math.random() * 30},${118 + Math.random() * 30},${118 + Math.random() * 30},${0.12 + Math.random() * 0.22})`
+    g.lineWidth = 0.8 + Math.random() * 2.6
+    let x = Math.random() * N, y = -20; g.beginPath(); g.moveTo(x, y)
+    const dx = (Math.random() - 0.5) * 3
+    while (y < N + 20) { x += dx * 12 + (Math.random() - 0.5) * 34; y += 14 + Math.random() * 26; g.lineTo(x, y) }
+    g.stroke()
+  }
+  g.filter = 'none'
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4
+  return t
+}
 /* dark marble for the vault floor */
 function marbleTexture() {
   const c = document.createElement('canvas'); c.width = 512; c.height = 512
@@ -490,7 +607,13 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
       goldGlow: glowMat(new THREE.Color(1.0, 0.72, 0.32)),
       spill: glowMat(new THREE.Color(1.0, 0.7, 0.3)),
       cone: coneMat(),
-      vaultGold: new THREE.MeshBasicMaterial({ map: brassTexture(), color: new THREE.Color(2.3, 1.75, 0.85) }),
+      vaultGold: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.62, 0.4, 0.18) }),
+      leaf: new THREE.MeshBasicMaterial({ map: carvedLeafTexture(), color: new THREE.Color(1.06, 0.98, 0.9) }),
+      archV: new THREE.MeshBasicMaterial({ map: architraveTexture(false), color: new THREE.Color(1.0, 0.92, 0.8) }),
+      archH: new THREE.MeshBasicMaterial({ map: architraveTexture(true), color: new THREE.Color(1.0, 0.92, 0.8) }),
+      marbleW: new THREE.MeshBasicMaterial({ map: (() => { const t = whiteMarbleTexture(); t.repeat.set(3, 1.4); return t })(), color: new THREE.Color(1.02, 0.99, 0.93) }),
+      trim: new THREE.MeshBasicMaterial({ map: (() => { const t = whiteMarbleTexture(); t.repeat.set(0.3, 1); return t })(), color: new THREE.Color(1.1, 1.07, 1.0) }),
+      trimShade: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.55, 0.52, 0.47) }),
       seam: new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 2.6, 0.9), toneMapped: false, transparent: true, opacity: 0 }),
       flood: glowMat(new THREE.Color(1.0, 0.74, 0.34)),
       glint: glowMat(new THREE.Color(1.0, 0.85, 0.5)),
@@ -604,26 +727,42 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
     add(new THREE.Mesh(quad([-sw, 3.2, STAIR_END], [sw, 3.2, STAIR_END], [sw, 3.2, 0], [-sw, 3.2, 0]), m.dark))
     /* the vault's light spilling up the stairwell */
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.spill); spill.position.set(0, 1.4, -0.6); spill.scale.set(3.2, 3.2, 1); add(spill)
-    /* the golden wardrobe that closes off the vault: two tall gilded doors, a lock at the seam, light behind them */
-    const VW = 4.3, VH = 5.6, VZ = VAULT_DOOR_Z
-    const flood = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.flood); flood.position.set(0, 1.9, VZ - 0.5); flood.scale.set(11, 7.5, 1); add(flood)
+    /* the wardrobe gate that closes off the vault: a palace doorway. Two tall carved honey-wood leaves with gilded relief
+       (rosette medallion, scroll friezes), a gilded architrave, white classical trim, set in a white marble wall */
+    const VW = 2.15, VH = 5.2, VZ = VAULT_DOOR_Z
+    const flood = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.flood); flood.position.set(0, 2.4, VZ - 2.5); flood.scale.set(10, 8.5, 1); add(flood)
     const mkVault = (side: number) => {
       const hinge = new THREE.Group(); hinge.position.set(-side * VW, 0, VZ)
-      const d = new THREE.Mesh(new THREE.BoxGeometry(VW, VH, 0.12), m.vaultGold); d.position.set(side * VW / 2, VH / 2, 0); hinge.add(d)
-      for (const [py, ph] of [[1.55, 2.3], [4.05, 2.1]]) {
-        const fr = new THREE.Mesh(new THREE.PlaneGeometry(VW - 0.7, ph), m.goldDim); fr.position.set(side * VW / 2, py, 0.062); hinge.add(fr)
-        const inn = new THREE.Mesh(new THREE.PlaneGeometry(VW - 0.84, ph - 0.14), m.vaultGold); inn.position.set(side * VW / 2, py, 0.064); hinge.add(inn)
-      }
-      const h = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.06), m.gold); h.position.set(side * 0.16, 1.45, 0.09); hinge.add(h)
+      /* faces: +x -x +y -y +z(front) -z(back) */
+      const d = new THREE.Mesh(new THREE.BoxGeometry(VW, VH, 0.14), [m.vaultGold, m.vaultGold, m.vaultGold, m.vaultGold, m.leaf, m.leaf]); d.position.set(side * VW / 2, VH / 2, 0); hinge.add(d)
+      /* gilded lever handles near the meeting stiles, at the height of his gloved hand */
+      const h = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.42, 0.06), m.gold); h.position.set(side * (VW - 0.2), 1.05, 0.11); hinge.add(h)
+      const hp = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.02), m.goldDim); hp.position.set(side * (VW - 0.2), 1.05, 0.08); hinge.add(hp)
       add(hinge); return hinge
     }
     const vl = mkVault(1), vr = mkVault(-1)
-    box(VW * 2 + 0.5, 0.36, 0.3, 0, VH + 0.18, VZ, m.door); box(VW * 2 + 0.6, 0.03, 0.04, 0, VH + 0.02, VZ + 0.16, m.goldDim)
-    for (const sx of [-1, 1]) box(0.3, VH + 0.36, 0.3, sx * (VW + 0.15), (VH + 0.36) / 2, VZ, m.door)
-    const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.035, VH - 0.1), m.seam); seam.position.set(0, VH / 2, VZ + 0.07); add(seam)
-    /* the lock rides on the left door */
-    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, 0.05), m.gold); lock.position.set(VW - 0.08, 1.45, 0.09); vl.add(lock)
-    const glint = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.glint); glint.position.set(0, 1.45, VZ + 0.2); glint.scale.set(0.7, 0.7, 1); add(glint)
+    /* gilded architrave */
+    const AW = 0.34
+    box(VW * 2 + AW * 2, AW, 0.24, 0, VH + AW / 2, VZ + 0.04, m.archH)
+    for (const sx of [-1, 1]) box(AW, VH + AW, 0.24, sx * (VW + AW / 2), (VH + AW) / 2, VZ + 0.04, m.archV)
+    /* white classical trim: pilasters, a cornice with a shadow line and a plinth course */
+    const PW = 0.5, X0 = VW + AW + 0.12
+    for (const sx of [-1, 1]) {
+      box(PW, VH + 0.9, 0.3, sx * (X0 + PW / 2), (VH + 0.9) / 2, VZ + 0.06, m.trim)
+      box(PW + 0.16, 0.22, 0.36, sx * (X0 + PW / 2), 0.11, VZ + 0.08, m.trim)
+      box(PW + 0.12, 0.16, 0.34, sx * (X0 + PW / 2), VH + 0.98, VZ + 0.07, m.trim)
+    }
+    const CW = (X0 + PW) * 2 + 0.5
+    box(CW, 0.36, 0.5, 0, VH + 1.24, VZ + 0.12, m.trim); box(CW - 0.1, 0.05, 0.46, 0, VH + 1.04, VZ + 0.12, m.trimShade); box(CW + 0.2, 0.12, 0.6, 0, VH + 1.48, VZ + 0.14, m.trim)
+    /* the marble wall around it (left, right, above), so the doorway is the only way through */
+    const WW = 16, WH = 12, hx = VW + AW
+    add(new THREE.Mesh(quad([-WW, -0.3, VZ - 0.02], [-hx, -0.3, VZ - 0.02], [-hx, WH, VZ - 0.02], [-WW, WH, VZ - 0.02], [3, 2.2]), m.marbleW))
+    add(new THREE.Mesh(quad([hx, -0.3, VZ - 0.02], [WW, -0.3, VZ - 0.02], [WW, WH, VZ - 0.02], [hx, WH, VZ - 0.02], [3, 2.2]), m.marbleW))
+    add(new THREE.Mesh(quad([-hx, VH + AW, VZ - 0.02], [hx, VH + AW, VZ - 0.02], [hx, WH, VZ - 0.02], [-hx, WH, VZ - 0.02], [0.8, 1.2]), m.marbleW))
+    const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.03, VH - 0.1), m.seam); seam.position.set(0, VH / 2, VZ + 0.08); add(seam)
+    /* the lock rides on the left door, by the handle */
+    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.05), m.gold); lock.position.set(VW - 0.07, 1.32, 0.1); vl.add(lock)
+    const glint = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.glint); glint.position.set(-0.07, 1.1, VZ + 0.22); glint.scale.set(0.6, 0.6, 1); add(glint)
     /* Lorenzo + a soft contact shadow */
     const geo = new THREE.PlaneGeometry(LEAD.h * LEAD.aspect, LEAD.h); geo.translate(0, LEAD.h / 2, 0)
     const lead = new THREE.Mesh(geo, m.lead); lead.renderOrder = 5; lead.frustumCulled = false; add(lead)
@@ -665,7 +804,7 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
     void low
   })
   /* where Lorenzo is and which frame he shows */
-  const lv = useMemo(() => ({ p: new THREE.Vector3(), c: new THREE.Vector3(), e: new THREE.Vector3(), tint: new THREE.Color(), shop: new THREE.Color(0.78, 0.5, 0.5), stair: new THREE.Color(0.85, 0.7, 0.52), vault: new THREE.Color(0.5, 0.42, 0.34), gold: new THREE.Color(1.0, 0.72, 0.36) }), [])
+  const lv = useMemo(() => ({ p: new THREE.Vector3(), c: new THREE.Vector3(), e: new THREE.Vector3(), tint: new THREE.Color(), shop: new THREE.Color(0.78, 0.5, 0.5), stair: new THREE.Color(0.85, 0.7, 0.52), vault: new THREE.Color(0.78, 0.68, 0.56), gold: new THREE.Color(1.0, 0.72, 0.36) }), [])
   const leader = (t: number, camera: THREE.Camera) => {
     const P = path.current, b = built, m = mats.lead.uniforms
     if (!P) { b.lead.visible = false; b.shadow.visible = false; return }
@@ -685,7 +824,8 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
     /* frames by distance walked; the key frame while he stands at the lock */
     const ph = (s / LEAD.stride) * LEAD.n, f0 = Math.floor(ph), fr = ph - f0
     const keyed = smooth(stop - 0.25, stop, Math.min(P.dist(t) + P.lead(t), stop)) * (1 - smooth(INTO_LIGHT - 0.15, INTO_LIGHT + 0.2, t))
-    cellOff(((f0 % LEAD.n) + LEAD.n) % LEAD.n, m.uA.value)
+    /* once he has stopped at the doors, both blend slots hold the doorman pose (no ghost of the stride in the rim) */
+    cellOff(keyed > 0.6 ? LEAD.key : ((f0 % LEAD.n) + LEAD.n) % LEAD.n, m.uA.value)
     if (keyed > 0.001) { cellOff(LEAD.key, m.uB.value); m.uMix.value = keyed }
     else { cellOff((((f0 + 1) % LEAD.n) + LEAD.n) % LEAD.n, m.uB.value); m.uMix.value = fr }
     /* matched lighting: crimson shop, warm stairwell, near-silhouette in the vault, gold rim when the wardrobe opens */
@@ -693,7 +833,7 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
     lv.tint.copy(lv.shop).lerp(lv.stair, stair).lerp(lv.vault, vault)
     m.uTint.value.copy(lv.tint)
     const open = smooth(OPEN_AT - 0.1, OPEN_AT + 0.6, t)
-    m.uRimI.value = 0.22 + 0.2 * stair + 0.85 * open + 0.3 * mats.seam.opacity
+    m.uRimI.value = 0.18 + 0.16 * stair + 0.4 * open + 0.2 * mats.seam.opacity
     m.uRim.value.setRGB(1.0, 0.3, 0.28).lerp(lv.gold, Math.max(stair, open))
     /* fade in from the doorway (never pops in front of the lens), out into the light at the end */
     const near = smooth(0.7, 1.3, lv.c.set(x, y + 1.5, z).distanceTo(lv.e.copy(camera.position).sub(g.current!.position)))

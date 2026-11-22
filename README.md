@@ -92,7 +92,7 @@ See [docs/CONTENT.md](docs/CONTENT.md) for everything still marked PLACEHOLDER.
    - The storefront rushes into the glass doors and hands over to the 3D camera inside the shop.
    - The camera walks a red runner between racks of suits under spotlights, glancing at the racks with a light head-bob.
    - Lorenzo (seen from behind, cat in his arm) walks ahead; the hidden wardrobe at the end of the shop opens and the camera takes a quick brass stairwell down (about 3.4s in total).
-   - The highlight: at the **golden vault** Lorenzo turns the key, a seam of light cracks, the doors swing inward and gold light floods out, then the camera glides through onto the first piece.
+   - The highlight: the **palace wardrobe gate** (carved honey-wood doors with gilded rosettes and friezes, in a gilded architrave and white marble). Lorenzo, now a doorman in a tailcoat and white gloves, with one hand on the handle, the other behind his back holding the cigar, and the cat on his shoulder, unlocks it. A seam of light cracks, the doors swing inward and gold light floods out, then the camera glides through onto the first piece.
    - The camera follows one CatmullRom spline eased over time, with a wider lens while walking and depth of field (desktop). Fog and light shift from crimson to gold.
    - The vault pictures are fetched during the walk.
 
