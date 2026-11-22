@@ -1,0 +1,12 @@
+{
+  "name": "godfather-menswear-tests",
+  "private": true,
+  "type": "commonjs",
+  "description": "End-to-end checks (Playwright, Chromium with SwiftShader WebGL) for the built site",
+  "scripts": {
+    "e2e": "node test3d.js",
+    "vault-fps": "node vaultfps.js",
+    "vault-open": "node vaultopen.js"
+  },
+  "dependencies": { "playwright": "1.49.1" }
+}

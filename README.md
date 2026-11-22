@@ -1,20 +1,80 @@
-# The Godfather Menswear — cinematic 3D site
+# The Godfather Menswear — cinematic 3D storefront
 
-Live: https://riyazzen369.github.io/thegodfather-menswear/ · domain (once DNS points to GitHub): https://www.thegodfatherclothings.in/
+Live: **https://riyazzen369.github.io/thegodfather-menswear/** · custom domain (once DNS points to GitHub): https://www.thegodfatherclothings.in/
 
-React + Three.js (react-three-fiber), mobile first (390px up to 1440px), in the red-and-black look of the store photo,
-with the store's real logo.
+React 19 + Three.js (react-three-fiber) + Vite. Mobile first (390px up to 1920px), red-and-black brand look taken from the real store photo, with the store's real logo.
 
-## Run
+> **License:** none. This is a private project, all rights reserved. No permission is granted to copy, modify or redistribute it.
+
+## Rebuild it in VS Code
+
+Prerequisites: [Node.js 24](https://nodejs.org) (`.nvmrc`; 20.19+ works), Git, VS Code.
 
 ```bash
-npm i
-npm run dev            # http://localhost:5173
-npm run build          # static site in dist/ (relative paths, works from any folder or sub-path)
-./start-demo.sh        # serves dist/ on http://localhost:8080 and opens the browser (start-demo.bat on Windows)
+git clone https://github.com/riyazzen369/thegodfather-menswear.git
+cd thegodfather-menswear
+code .                 # accept the recommended extensions (ESLint, Prettier, EditorConfig, Oxc)
+npm ci                 # exact dependency versions from package-lock.json
+npm run dev            # http://localhost:5173 (hot reload)
+npm run build          # type-check + static site in dist/ (relative paths, works from any sub-path)
+npm run preview        # serve dist/ at http://localhost:4173
+npm run deploy         # build and publish dist/ to the gh-pages branch (GitHub Pages)
+npm test               # end-to-end suite: builds, serves on :8795, runs tests/test3d.js in headless Chromium
 ```
 
-Use a static server for dist/. Opening `index.html` straight from disk (file://) won't load the 3D module.
+- Debugging: **Run and Debug → "Chrome: dev server"** (start `npm run dev` first). Breakpoints in `src/*.tsx` work through source maps.
+- `npm test` installs Playwright + Chromium into `tests/` on first run (~150 MB). `npm run test:vault-fps` measures vault frame times while sliding.
+- `npm run images` regenerates the responsive AVIF/WebP copies and blur placeholders after you replace photos (needs Python 3 + Pillow with AVIF).
+- Deploying needs push access to the repo (GitHub login or token in your Git credential helper). See [docs/DEPLOY.md](docs/DEPLOY.md).
+- Opening `dist/index.html` from disk (file://) will not load the 3D module; use `npm run preview` or any static server (`./start-demo.sh`, `start-demo.bat`).
+
+## Project structure
+
+```
+index.html              logo gate markup (paints before JS), SEO meta, JSON-LD
+src/
+  main.tsx              React entry
+  App.tsx               views/state machine, vault rail (spring), sheet, inspect, keyboard, 2D fallback
+  three/Experience.tsx  the whole 3D scene: gate, storefront, walk-in, golden vault, pieces, quality tiers, GPU watchdog
+  Inspect.tsx           3D turntable inspect view (2.5D garment mesh from the cut-out photo)
+  Tailor.tsx            Lorenzo the host: greeting, typed line, the two choices
+  Grid.tsx              Attire Tour grid with category filters
+  Pic.tsx               responsive <picture> with blur placeholder, preloading, logo mark
+  Rain.tsx              canvas rain + splashes on the storefront
+  rig.ts                shared mutable state between DOM and 3D (timings: TRANSITION_MS, WALK_MS)
+  data.ts               EDIT HERE: contact details, products, prices, logo/store paths, Lorenzo copy
+  lqip.ts               generated blur placeholders
+  styles.css, fonts.css, fonts/   styles and self-hosted fonts
+public/                 shipped as-is: img/ (products, r/ responsive, cut/ cut-outs), brand/ (logo sizes),
+                        store/, tailor/ (Lorenzo), walk/ (walk sprite atlas), favicons, robots, sitemap, CNAME
+assets-src/             original/master images (logo JPG, store photos, references, generated products, Lorenzo previews, concept stills)
+scripts/                deploy.sh (gh-pages), imgs.py (responsive images), asset-prep/ (one-off image prep scripts)
+tests/                  Playwright end-to-end suite (test3d.js), vault fps check, vault-opening stills, Windows laptop runner (zeus/)
+docs/                   DESIGN.md, ARCHITECTURE.md, DEPLOY.md, CONTENT.md
+.vscode/                recommended extensions, Chrome debug launch configs, workspace settings
+```
+
+## Edit the products (`src/data.ts`)
+
+Everything a shop owner changes is in `src/data.ts`:
+
+- `CONTACT`: `whatsapp` (digits with country code, e.g. `919876543210`), `phone`, `phoneLabel`, `address`, `bookingUrl` (empty = WhatsApp fitting request).
+- `SAMPLE_PRICES`: `true` shows "sample price" labels; set `false` once real prices are in.
+- `ITEMS`: one object per piece, in vault order:
+
+```ts
+{ category: 'formal',                 // 'formal' | 'wedding' | 'statement' | 'shirts' (Attire Tour filters)
+  name: 'Three-piece suit', tagline: 'Cut for the long evening.',
+  fabric: 'Navy Super 120s worsted wool…', price: 85000,          // INR, or null for "price on request"
+  images: imgs('three-piece', 'Navy three-piece suit on a mannequin', true),  // slug, alt text, has store crop (-4)
+  colours: [{ name: 'Navy', hex: '#1d2a44' }],
+  details: { fit: '…', madeToMeasure: '…', delivery: '…' } }
+```
+
+- Photos for a slug live at `public/img/<slug>-1.webp` (3:4 hero, ~768×1024, used in the vault), `-2` (detail), `-3` (closer crop), `-4` (optional store-window crop). After replacing, run `npm run images`. For the 3D inspect view also add a transparent cut-out at `public/img/cut/<slug>-1.webp` (any background remover, e.g. `rembg`); without it the view uses the hero photo.
+- Adding or removing an item needs no other code change; the vault, grid, counter and inspect view all read `ITEMS`.
+
+See [docs/CONTENT.md](docs/CONTENT.md) for everything still marked PLACEHOLDER.
 
 ## Flow
 
@@ -28,11 +88,11 @@ Use a static server for dist/. Opening `index.html` straight from disk (file://)
    - Two buttons: The Godfather Attire Tour (dark) and The Godfather Premium Wardrobe (red).
    - Skip or Esc shows the full line and the buttons at once.
    - The top nav (Collections, Tailoring, Visit, Private wardrobe) shows on desktop.
-4. **Premium Wardrobe.** One continuous first-person walk of 9s, with Skip and Esc:
+4. **Premium Wardrobe.** One continuous walk of about 6.4s, led by Lorenzo, with Skip and Esc:
    - The storefront rushes into the glass doors and hands over to the 3D camera inside the shop.
    - The camera walks a red runner between racks of suits under spotlights, glancing at the racks with a light head-bob.
-   - The hidden wardrobe at the end of the shop opens on gold light, and the camera steps through and down a brass stairwell with lit steps.
-   - It glides out onto the first anchor in the **golden vault**, and the first piece lights up on its plinth.
+   - Lorenzo (seen from behind, cat in his arm) walks ahead; the hidden wardrobe at the end of the shop opens and the camera takes a quick brass stairwell down (about 3.4s in total).
+   - The highlight: at the **golden vault** Lorenzo turns the key, a seam of light cracks, the doors swing inward and gold light floods out, then the camera glides through onto the first piece.
    - The camera follows one CatmullRom spline eased over time, with a wider lens while walking and depth of field (desktop). Fog and light shift from crimson to gold.
    - The vault pictures are fetched during the walk.
 
@@ -52,53 +112,12 @@ Use a static server for dist/. Opening `index.html` straight from disk (file://)
 8. **Reduced motion, or no WebGL:** a 2D version with plain fades and the same flow.
 9. **GPU watchdog:** if the WebGL context is lost, the vault renders black, or the frame rate stays under 8 fps, the site switches to the 2D room mid-visit. The pictures stay where they are.
 
-## Replace before going live (`src/data.ts`)
 
-- `CONTACT.whatsapp` (digits with country code), `phone`, `phoneLabel`, `address`, and optionally `bookingUrl`
-- `ITEMS[].price`: the prices are samples; set `SAMPLE_PRICES = false` once real prices are in
-- Copy, colours and `category` for each piece
-- Real product photos: `public/img/<slug>-1..4.webp` (`-1` is the 3:4 hero, about 768×1024)
-- A vector or PNG master of the logo if one exists (`public/brand/`). The current logo is cut out of the supplied JPG.
+## Docs
 
-## Images
+- [docs/DESIGN.md](docs/DESIGN.md): palette, fonts, logo rules, scene-by-scene flow with timings, animation specs, breakpoints, accessibility, performance tiers
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): components, 3D scene, state flow, data model, URL debug flags
+- [docs/DEPLOY.md](docs/DEPLOY.md): GitHub Pages, custom-domain DNS for www.thegodfatherclothings.in, canonical/meta URL switch
+- [docs/CONTENT.md](docs/CONTENT.md): what to replace before launch, and the assumptions made
 
-- **Store photo:** the storefront hero and the entry. Crops from it are used for the suit, velvet blazer and animal-print shirts (`-4`).
-- **Generated, per piece:** a hero (`-1`) and a detail close-up (`-2`) for all 12 pieces. `-3` is a tighter crop of the hero.
-- **Generated, other:** Lorenzo (`public/tailor/lorenzo.webp`) and the velvet curtain.
-- **Built in code:** the vault, the shop interior, racks, stairwell, the doors, the rain, the slats and the wardrobe.
-- **Responsive copies:** `public/img/r/` (AVIF + WebP, 512w and full) and `src/lqip.ts` (placeholders) are generated by `python3 scripts/imgs.py` (needs Pillow with AVIF); logo sizes `public/brand/logo-160/240/320/800.webp` too. Re-run it after replacing photos.
-
-## Domain and SEO
-
-- `public/CNAME`: www.thegodfatherclothings.in (kept in the repo, not published by `scripts/deploy.sh` until the DNS records below are in place; when the domain goes live, also switch the canonical/og URLs in `index.html`, `public/robots.txt` and `public/sitemap.xml` back to it)
-- Also in `public/`: `.nojekyll`, `robots.txt`, `sitemap.xml`, `site.webmanifest`, favicons and `og-image.jpg`
-- In `index.html`: the canonical URL, Open Graph and Twitter tags, and JSON-LD
-- Fonts are self-hosted, so the site does not depend on Google Fonts at runtime
-
-## Deploy (GitHub Pages)
-
-1. Run `npm run build`.
-2. Publish `dist/` to the `gh-pages` branch. Pages source: `gh-pages`, folder `/`.
-3. Add these DNS records at the registrar for thegodfatherclothings.in:
-
-   | Type  | Host       | Value                                                                  |
-   |-------|------------|------------------------------------------------------------------------|
-   | CNAME | www        | riyazzen369.github.io                                                  |
-   | A     | @ (apex)   | 185.199.108.153, 185.199.109.153, 185.199.110.153, 185.199.111.153     |
-   | AAAA  | @ (apex)   | 2606:50c0:8000::153, 2606:50c0:8001::153, 2606:50c0:8002::153, 2606:50c0:8003::153 |
-
-4. In the repo, open Settings → Pages and set the custom domain to `www.thegodfatherclothings.in`.
-5. Once the DNS check passes and the certificate is issued (minutes to a few hours), tick **Enforce HTTPS**.
-
-## Debug
-
-- `?2d`: force the 2D version
-- `?freeze=1.3`: hold the entry at 1.3s
-- `?wfreeze=4.2`: hold the premium walk at 4.2s
-- `?force3d`: never fall back to 2D for low frame rate (software GL in tests)
-- `?hq`: never drop to the low-quality mode
-- `?q=low|med|high`: force a quality level (low: pixel ratio 1, plain floor, no depth of field; med: pixel ratio up to 1.25, half-resolution reflections, no depth of field; high: pixel ratio up to 1.75, full reflections and depth of field). Without it the site starts high and drops to low if the frame rate declines.
-- `?debug=fps`: an overlay with fps (and the minimum), the mode, quality level, pixel ratio, view and the watchdog reading. Combine them, for example `?debug=fps&q=med`.
-- `window.__glHealth`: the GPU watchdog's last reading
-- `window.__rig`: shared state
-- `window.__fps`: frame rate
+© The Godfather Menswear. All rights reserved.

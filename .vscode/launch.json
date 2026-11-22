@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Chrome: dev server (npm run dev)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173/?debug=fps",
+      "webRoot": "${workspaceFolder}",
+      "sourceMaps": true
+    },
+    {
+      "name": "Chrome: production preview (npm run preview)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:4173/",
+      "webRoot": "${workspaceFolder}"
+    },
+    {
+      "name": "Node: run tests/test3d.js",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/tests/test3d.js",
+      "env": { "URL": "http://localhost:8795/", "NOVIDEO": "1" }
+    }
+  ]
+}

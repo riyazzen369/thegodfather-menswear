@@ -1,28 +1,28 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
+# dependencies and build output
+node_modules/
+dist/
+dist-ssr/
 *.local
 
-# Editor directories and files
+# logs
+logs/
+*.log
+npm-debug.log*
+
+# test output (screenshots, videos, results)
+shots/
+tests/out/
+tests/node_modules/
+
+# scratch work (crops, previews)
+work/
+
+# editors / OS
 .vscode/*
 !.vscode/extensions.json
-.idea
+!.vscode/launch.json
+!.vscode/settings.json
+.idea/
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
+Thumbs.db
 *.sw?
-
-# working files (crops, previews, scripts used to prepare images)
-work/
-shots/
