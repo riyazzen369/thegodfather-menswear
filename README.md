@@ -70,7 +70,7 @@ Use a static server for dist/. Opening `index.html` straight from disk (file://)
 
 ## Domain and SEO
 
-- `public/CNAME`: www.thegodfatherclothings.in
+- `public/CNAME`: www.thegodfatherclothings.in (kept in the repo, not published by `scripts/deploy.sh` until the DNS records below are in place; when the domain goes live, also switch the canonical/og URLs in `index.html`, `public/robots.txt` and `public/sitemap.xml` back to it)
 - Also in `public/`: `.nojekyll`, `robots.txt`, `sitemap.xml`, `site.webmanifest`, favicons and `og-image.jpg`
 - In `index.html`: the canonical URL, Open Graph and Twitter tags, and JSON-LD
 - Fonts are self-hosted, so the site does not depend on Google Fonts at runtime

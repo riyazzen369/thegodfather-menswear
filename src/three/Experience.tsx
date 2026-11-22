@@ -708,8 +708,12 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
       /* everything, including the storefront and curtains that are hidden at the gate */
       const hidden: THREE.Object3D[] = []
       scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true } })
-      try { gl.compile(scene, camera) } catch { /* not fatal */ }
-      hidden.forEach(o => { o.visible = false })
+      /* async where the driver supports parallel compile, so the gate's glow never stalls while it happens */
+      const restore = () => hidden.forEach(o => { o.visible = false })
+      try {
+        const r = (gl as THREE.WebGLRenderer & { compileAsync?: (s: THREE.Object3D, c: THREE.Camera) => Promise<unknown> }).compileAsync
+        if (r) { const p = r.call(gl, scene, camera); restore(); p.catch(() => {}) } else { gl.compile(scene, camera); restore() }
+      } catch { restore() }
     }, 1200)
     return () => clearTimeout(id)
   }, [gl, scene, camera])
@@ -940,21 +944,39 @@ export default function Experience({ onFail, paused = false }: { onFail: (why: s
   const dpr = Math.min(T_.dpr, window.devicePixelRatio || 1)
   rig.low = low; rig.quality = (Q ? 'pinned ' : 'auto ') + tier; rig.dpr = +dpr.toFixed(2)
   const path = useRef<WalkPath | null>(null)
+  /* the walk-in set (shop, stairs, golden wardrobe, Lorenzo) is built once the first frame is up, in an idle moment,
+     so it never adds to the first paint; it is ready long before anyone can choose the premium wardrobe */
+  const [walkOn, setWalkOn] = useState(false)
+  useEffect(() => {
+    const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }
+    const go = () => setWalkOn(true)
+    const id = window.setTimeout(() => { if (w.requestIdleCallback) w.requestIdleCallback(go, { timeout: 1500 }); else go() }, 700)
+    return () => clearTimeout(id)
+  }, [])
   const dof = useRef<DepthOfFieldEffect | null>(null)
-  const down = () => setTier(t => t === 'high' ? 'med' : 'low')
-  const up = () => setTier(t => t === 'low' ? 'med' : 'high')
+  /* a tier change rebuilds the post chain (a visible hitch), so it waits until nothing is moving:
+     never mid-entry or mid-walk; applied on the next calm moment instead */
+  const want = useRef<Tier | null>(null)
+  const calm = () => rig.view !== 'transition' && rig.view !== 'walk' && !(walkTime() >= 0 && walkTime() < WALK_MS / 1000 + 0.5) && (!rig.descentAt || performance.now() - rig.descentAt > DESCENT_MS)
+  const ask = (f: (t: Tier) => Tier) => { want.current = f(want.current ?? tier); if (calm()) { setTier(want.current); want.current = null } }
+  useEffect(() => {
+    const id = window.setInterval(() => { if (want.current && calm()) { setTier(want.current); want.current = null } }, 400)
+    return () => clearInterval(id)
+  }, [])
+  const down = () => ask(t => t === 'high' ? 'med' : 'low')
+  const up = () => ask(t => t === 'low' ? 'med' : 'high')
   return (
     <Canvas className="gl" dpr={dpr} frameloop={paused ? 'demand' : 'always'} gl={{ antialias: false, alpha: false, powerPreference: 'high-performance', stencil: false }}
       camera={{ fov: FOV, near: 0.1, far: 80, position: [0, 0, GATE_CAM] }}
       onCreated={({ gl, scene }) => { gl.setClearColor('#050303'); scene.fog = new THREE.Fog('#050303', 9, 30) }}
       aria-hidden="true">
-      {!HQ && <PerformanceMonitor bounds={() => [45, 58]} flipflops={4} onDecline={down} onIncline={up} onFallback={() => { if (rig.fps && rig.fps < 45) setTier('low') }} />}
+      {!HQ && <PerformanceMonitor bounds={() => [45, 58]} flipflops={4} onDecline={down} onIncline={up} onFallback={() => { if (rig.fps && rig.fps < 45) ask(() => 'low') }} />}
       <ambientLight intensity={1.2} />
       <CameraRig path={path} />
       <Atmosphere path={path} />
       <Room low={low} res={T_.reflect} />
       {ITEMS.map((_, i) => <Piece key={i} i={i} />)}
-      <Walk low={low} path={path} />
+      {(walkOn || rig.walkAt > 0) && <Walk low={low} path={path} />}
       <Dust />
       <Storefront />
       <Gate />

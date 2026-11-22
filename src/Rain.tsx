@@ -23,7 +23,8 @@ export default function Rain({ layer, floor = 0.8, paused = false }: { layer: 'b
     const ro = new ResizeObserver(size); ro.observe(c)
     const slant = 0.16
     const tick = (t: number) => {
-      const dt = Math.min(0.05, (t - last) / 1000); last = t
+      /* rAF time can be a little behind performance.now() on the first frame: never step backwards */
+      const dt = Math.max(0, Math.min(0.05, (t - last) / 1000)); last = Math.max(last, t)
       g.clearRect(0, 0, W, H)
       g.lineCap = 'round'
       for (const d of drops) {
@@ -43,7 +44,7 @@ export default function Rain({ layer, floor = 0.8, paused = false }: { layer: 'b
         for (const r of rings) {
           r.r += 26 * dt; r.a *= Math.pow(0.04, dt)
           g.strokeStyle = `rgba(255,190,190,${r.a})`; g.lineWidth = 0.7
-          g.beginPath(); g.ellipse(r.x, r.y, r.r, r.r * 0.28, 0, 0, Math.PI * 2); g.stroke()
+          g.beginPath(); g.ellipse(r.x, r.y, Math.max(0.1, r.r), Math.max(0.03, r.r * 0.28), 0, 0, Math.PI * 2); g.stroke()
         }
       }
       raf = requestAnimationFrame(tick)
