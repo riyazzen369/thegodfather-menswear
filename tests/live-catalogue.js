@@ -45,6 +45,11 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
 (async () => {
   execSync('npx vite build --outDir dist-live --emptyOutDir', { cwd: ROOT, stdio: 'ignore', env: { ...process.env, VITE_SUPABASE_URL: MOCK, VITE_SUPABASE_ANON_KEY: ANON } });
   const dist = fs.readdirSync(path.join(ROOT, 'dist-live/assets')).map(f => fs.readFileSync(path.join(ROOT, 'dist-live/assets', f), 'latin1')).join('');
+  /* everything the store page can load: what index.html references, then their static + dynamic imports */
+  const AS = path.join(ROOT, 'dist-live/assets'), seen = new Set(), todo = [...fs.readFileSync(path.join(ROOT, 'dist-live/index.html'), 'utf8').matchAll(/assets\/([^"']+\.js)/g)].map(m => m[1]);
+  while (todo.length) { const f = todo.pop(); if (seen.has(f)) continue; seen.add(f); for (const m of fs.readFileSync(path.join(AS, f), 'latin1').matchAll(/["'`]\.\/([A-Za-z0-9_.-]+\.m?js)["'`]/g)) todo.push(m[1]); }
+  const graph = [...seen].map(f => fs.readFileSync(path.join(AS, f), 'latin1')).join('');
+  ok(`public site bundle has no background-removal / onnx code (${[...seen].join(' ')})`, seen.size >= 3 && !/onnxruntime|removeBackground|isnet_quint8/.test(graph));
   ok('build: anon key + URL embedded, no service-role key', dist.includes(ANON) && dist.includes(MOCK) && !/service_role|SERVICE_ROLE/.test(dist));
   const srv = spawn('npx', ['vite', 'preview', '--outDir', 'dist-live', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) { try { await fetch(URL); break } catch { await sleep(250) } }
@@ -126,7 +131,8 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
       const m = r.request().method(), u = r.request().url();
       if (m === 'OPTIONS') return r.fulfill({ status: 200, headers: cors });
       if (u.includes('/object/public/')) { const p = decodeURIComponent(u.split('/public/products/')[1].split('?')[0]); const f = FILES[p]; return f ? r.fulfill({ status: 200, headers: cors, contentType: 'image/webp', body: img(f) }) : r.fulfill({ status: 404, headers: cors, body: '' }); }
-      if (m === 'POST') { const buf = r.request().postDataBuffer(); A.uploads.push({ path: u.split('/object/products/')[1], type: r.request().headers()['content-type'], size: buf ? buf.length : 0, webp: !!buf && /RIFF....WEBPVP8/s.test(buf.toString('latin1')) && /image\/webp/.test(buf.toString('latin1').slice(0, 400) + r.request().headers()['content-type']), auth: r.request().headers()['authorization'] }); return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ Key: 'products/x' }) }); }
+      if (m === 'POST') { const buf = r.request().postDataBuffer(); const lat = buf ? buf.toString('latin1') : ''; const ri = lat.indexOf('RIFF'); const webpBuf = ri >= 0 ? buf.slice(ri, ri + 8 + buf.readUInt32LE(ri + 4)) : null;
+        A.uploads.push({ webpBuf, path: u.split('/object/products/')[1], type: r.request().headers()['content-type'], size: buf ? buf.length : 0, webp: !!buf && /RIFF....WEBPVP8/s.test(buf.toString('latin1')) && /image\/webp/.test(buf.toString('latin1').slice(0, 400) + r.request().headers()['content-type']), auth: r.request().headers()['authorization'] }); return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ Key: 'products/x' }) }); }
       if (m === 'DELETE') { A.removes.push(r.request().postData()); return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: '[]' }); }
       r.fulfill({ status: 200, headers: cors, body: '{}' });
     });
@@ -141,20 +147,48 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
     const li = await a.$$eval('.adm-list li', l => l.map(x => x.dataset.slug));
     ok('admin: product list after sign-in', li.length === ROWS.length, li.join());
     await a.screenshot({ path: SH + '32-admin-list.png' });
-    await a.click('#adm-new'); await a.fill('#f-name', 'Midnight Test Jacket'); await a.fill('#f-price', '64000'); await a.selectOption('#f-collection', 'premium');
-    await a.fill('#f-tagline', 'A test of the upload path.'); await a.check('#f-published');
-    await a.setInputFiles('#f-front', path.join(ROOT, 'public/img/tuxedo-1.webp')); await a.waitForSelector('.flip-prev-card img', { timeout: 8000 }); await sleep(500);
+    await a.click('#adm-new'); await a.fill('#f-name', 'Midnight Test Tee'); await a.fill('#f-price', '4500'); await a.selectOption('#f-collection', 'premium');
+    await a.fill('#f-tagline', 'A phone photo, normalised.'); await a.check('#f-published');
+    const T0 = Date.now();
+    await a.setInputFiles('#f-front', path.join(__dirname, 'fixtures/tee-front-phone.jpg'));
+    await a.waitForSelector('#prev-vault[src^="blob:"]', { timeout: 240000 });
+    const tFront = Date.now() - T0;
+    await a.setInputFiles('#f-back', path.join(__dirname, 'fixtures/tee-back-phone.jpg'));
+    await a.waitForFunction(() => document.querySelector('.nudges[data-face="back"]'), null, { timeout: 240000 }); await sleep(600);
+    const method = await a.textContent('#f-method').catch(() => '');
+    ok(`admin: background removed in the browser (${Math.round(tFront / 1000)}s front)`, /removed automatically/.test(method || ''), method);
+    await a.click('[data-n="front-s-plus"]'); await a.click('[data-n="front-s-plus"]'); await a.click('[data-n="back-y-minus"]'); await sleep(1500);
     await a.screenshot({ path: SH + '33-admin-upload.png' });
-    // drag the preview to its back
     const st = await a.$('.flip-prev-stage'); const bb = await st.boundingBox();
     await a.mouse.move(bb.x + bb.width * 0.3, bb.y + bb.height / 2); await a.mouse.down(); await a.mouse.move(bb.x + bb.width * 0.3 + 200, bb.y + bb.height / 2, { steps: 10 }); await a.mouse.up(); await sleep(700);
-    ok('admin: drag-to-flip preview shows the plain back', /Back/.test(await a.innerText('.flip-prev-bar')));
-    await a.click('#f-save'); await a.waitForSelector('.adm-list li', { timeout: 10000 }); await sleep(400);
-    const up = A.uploads[0], w = A.writes.find(x => x.m === 'POST');
-    ok('admin: front photo uploaded as WebP to the products bucket with the user token', !!up && /^midnight-test-jacket\/front-[a-z0-9]+\.webp$/.test(up.path) && up.webp && up.size > 5000 && /^Bearer e30\./.test(up.auth || ''), JSON.stringify(up));
-    ok('admin: product row inserted with blur placeholder and published', !!w && w.body.slug === 'midnight-test-jacket' && w.body.price_from === 64000 && w.body.published === true && /^data:image\/webp;base64,/.test(w.body.blur || '') && w.body.front_path === up.path, JSON.stringify(w && { ...w.body, blur: (w.body.blur || '').slice(0, 30) }));
+    ok('admin: drag-to-flip preview shows the back', /Back/.test(await a.innerText('.flip-prev-bar')) && !!(await a.$('.flip-prev-card .face.b img')));
+    await a.screenshot({ path: SH + '34-admin-flip-back.png' });
+    await a.click('#f-save'); await a.waitForSelector('.adm-list li', { timeout: 30000 }); await sleep(400);
+    const byName = n => A.uploads.find(u => new RegExp(`^midnight-test-tee/${n}-[a-z0-9]+\\.webp$`).test(u.path));
+    const files = ['front', 'front-cut', 'front-src', 'back', 'back-src'];
+    ok('admin: uploads photo, cut-outs and raw sources as WebP with the user token', files.every(n => byName(n) && byName(n).webp && /^Bearer e30\./.test(byName(n).auth || '')), JSON.stringify(A.uploads.map(u => u.path + ':' + u.webp)));
+    const w = A.writes.find(x => x.m === 'POST');
+    ok('admin: row has paths, blur, nudges', !!w && w.body.slug === 'midnight-test-tee' && w.body.published === true && /^data:image\/webp;base64,/.test(w.body.blur || '') &&
+      w.body.front_path === byName('front').path && w.body.front_cut_path === byName('front-cut').path && w.body.back_path === byName('back').path &&
+      Math.abs(w.body.nudge.front.s - 1.04) < 1e-6 && Math.abs(w.body.nudge.back.y + 0.01) < 1e-6 && w.body.src_paths.front === byName('front-src').path, JSON.stringify(w && { ...w.body, blur: 0 }));
+    // geometry of the normalised images (decoded with Pillow)
+    const dir = path.join(__dirname, 'out'); fs.mkdirSync(dir, { recursive: true });
+    for (const n of ['front', 'front-cut', 'back']) fs.writeFileSync(path.join(dir, `tee-${n}.webp`), byName(n).webpBuf);
+    const geo = JSON.parse(execSync(`python3 -c "
+import json,numpy as np;from PIL import Image
+o={}
+for n in ['front-cut','back','front']:
+  im=Image.open('${dir}/tee-'+n+'.webp');W,H=im.size
+  if n=='front': a=np.array(im.convert('RGB')).astype(int);o[n]={'W':W,'H':H,'red':float((a[...,0]>a[...,2]+20).mean())};continue
+  al=np.array(im.convert('RGBA'))[...,3];ys,xs=np.where(al>60)
+  o[n]={'W':W,'H':H,'top':ys.min()/H,'bot':ys.max()/H,'cx':(xs.min()+xs.max())/2/W,'w':(xs.max()-xs.min())/W,'h':(ys.max()-ys.min())/H,'bgClear':float((al[:40].mean()+al[-40:].mean())/2)}
+print(json.dumps(o))"`).toString());
+    const fc = geo['front-cut'], bk = geo.back;
+    ok('normalised front: 3:4, top ~11%, centred, within the 72%x76% frame (x1.04 nudge)', fc.W * 4 === fc.H * 3 && Math.abs(fc.top - 0.11) < 0.015 && Math.abs(fc.cx - 0.5) < 0.02 && fc.w <= 0.72 * 1.05 + 0.01 && fc.h <= 0.76 * 1.05 + 0.01 && fc.bgClear < 5, JSON.stringify(fc));
+    ok('normalised back: same height as the front (flip lines up), nudged up 1%', Math.abs(bk.h - fc.h) < 0.02 && Math.abs(bk.top - (0.11 - 0.01)) < 0.015 && Math.abs(bk.cx - 0.5) < 0.03, JSON.stringify(bk));
+    ok('vault photo: 864x1152 on the red-velvet plate', geo.front.W === 864 && geo.front.H === 1152 && geo.front.red > 0.3, JSON.stringify(geo.front));
     const li2 = await a.$$eval('.adm-list li', l => l.map(x => x.dataset.slug));
-    ok('admin: new product appears in the list', li2.includes('midnight-test-jacket'), li2.join());
+    ok('admin: new product appears in the list', li2.includes('midnight-test-tee'), li2.join());
     await actx.close();
     ok('no page errors', errs.length === 0, errs.slice(0, 5).join(' | '));
   } finally { await browser.close(); srv.kill(); }

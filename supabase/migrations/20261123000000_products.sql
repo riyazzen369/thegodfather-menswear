@@ -38,6 +38,8 @@ create table if not exists public.products (
   back_path text,                                      -- optional back photo; empty = shared plain back
   extra_paths jsonb not null default '[]'::jsonb,      -- more gallery photos for the detail sheet: [{ path, alt }]
   blur text,                                           -- tiny data-URL placeholder
+  nudge jsonb not null default '{}'::jsonb,            -- admin framing tweaks: { front: { s, x, y }, back: { s, x, y } }
+  src_paths jsonb not null default '{}'::jsonb,        -- raw background-removed cut-outs { front, back } so framing can be redone
   sort integer not null default 100,
   published boolean not null default false,
   created_at timestamptz not null default now(),

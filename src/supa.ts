@@ -16,6 +16,7 @@ export type Row = {
   id: string; slug: string; name: string; collection: 'premium' | 'attire'; category: Category; price_from: number | null
   tagline: string; description: string; fabric: string; details: Partial<Item['details']>; colours: Item['colours']
   front_path: string | null; extra_paths: { path: string; alt?: string }[]; front_cut_path: string | null; back_path: string | null; blur: string | null
+  nudge?: { front?: { s: number; x: number; y: number }; back?: { s: number; x: number; y: number }; frontBox?: { w: number; h: number } }; src_paths?: { front?: string; back?: string }
   sort: number; published: boolean; updated_at: string
 }
 export const publicUrl = (path: string | null, v?: string) => path ? `${URL_}/storage/v1/object/public/products/${path}${v ? `?v=${encodeURIComponent(v)}` : ''}` : undefined

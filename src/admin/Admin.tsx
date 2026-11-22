@@ -4,13 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
 import { CATEGORIES } from '../data'
 import { liveEnabled, publicUrl, supa, type Row } from '../supa'
-import { prepare } from './image'
+import { cutOut, cutFromUrl, place, rawBlob, NUDGE0, type Cut, type Nudge, type Placed } from './normalize'
 
 type Draft = Omit<Row, 'id' | 'updated_at'> & { id?: string; updated_at?: string }
 const blank = (sort: number): Draft => ({
   slug: '', name: '', collection: 'premium', category: 'formal', price_from: null, tagline: '', description: '', fabric: '',
   details: { fit: '', madeToMeasure: '', delivery: '' }, colours: [], front_path: null, extra_paths: [], front_cut_path: null,
-  back_path: null, blur: null, sort, published: false
+  back_path: null, blur: null, nudge: {}, src_paths: {}, sort, published: false
 })
 const slugify = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -102,43 +102,90 @@ function Catalogue({ sb }: { sb: SupabaseClient }) {
   )
 }
 
-type Pending = { blob: Blob; blur: string; url: string }
+type Face = { cut: Cut; nudge: Nudge; placed: Placed | null; fresh: boolean }
+const STEPS = { s: 0.02, x: 0.01, y: 0.01 }
 function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDone: () => void }) {
   const [d, setD] = useState<Draft>(draft), [err, setErr] = useState(''), [busy, setBusy] = useState('')
-  const [front, setFront] = useState<Pending | null>(null), [back, setBack] = useState<Pending | null>(null)
+  const [faces, setFaces] = useState<{ front: Face | null; back: Face | null }>({ front: null, back: null })
   const [dropBack, setDropBack] = useState(false)
+  const [method, setMethod] = useState('')
   const isNew = !draft.id
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD(x => ({ ...x, [k]: v }))
   const setDet = (k: keyof Row['details'], v: string) => setD(x => ({ ...x, details: { ...x.details, [k]: v } }))
-  useEffect(() => () => { front && URL.revokeObjectURL(front.url); back && URL.revokeObjectURL(back.url) }, [front, back])
-  const pick = async (f: File | undefined, which: 'front' | 'back') => {
-    if (!f) return
-    if (!/^image\//.test(f.type)) { setErr('Pick an image file.'); return }
-    try { setBusy('Preparing image…'); const p = await prepare(f); const v = { ...p, url: URL.createObjectURL(p.blob) }; which === 'front' ? setFront(v) : (setBack(v), setDropBack(false)); setErr('') }
-    catch (e) { setErr((e as Error).message) } finally { setBusy('') }
+  const facesRef = useRef(faces); facesRef.current = faces
+  const run = useRef(0)
+  /* (re)place both faces: the back is sized to the front's placed box so the flip lines up */
+  const layout = async (f: { front: Face | null; back: Face | null }) => {
+    const id = ++run.current
+    const front = f.front ? { ...f.front, placed: await place(f.front.cut, f.front.nudge, { photo: true }) } : null
+    const match = front?.placed?.box ?? (d.nudge as any)?.frontBox
+    const back = f.back ? { ...f.back, placed: await place(f.back.cut, f.back.nudge, { photo: false, match }) } : null
+    if (id !== run.current) return
+    setFaces(old => { for (const o of [old.front?.placed, old.back?.placed]) if (o) { URL.revokeObjectURL(o.cutUrl); o.photoUrl && URL.revokeObjectURL(o.photoUrl) } return { front, back } })
   }
-  const frontUrl = front?.url ?? publicUrl(d.front_cut_path ?? d.front_path, d.updated_at)
-  const backUrl = dropBack ? undefined : back?.url ?? publicUrl(d.back_path, d.updated_at)
+  const pick = async (file: File | undefined, which: 'front' | 'back') => {
+    if (!file) return
+    if (!/^image\//.test(file.type)) { setErr('Pick an image file.'); return }
+    try {
+      setErr(''); setBusy('Preparing photo…')
+      const cut = await cutOut(file, setBusy)
+      setMethod(cut.method === 'ai' ? 'Background removed automatically.' : cut.method === 'alpha' ? 'Transparent cut-out used as is.' : 'Background model unavailable: plain backdrop keyed out. Check the edges.')
+      setBusy('Framing…')
+      const next = { ...facesRef.current, [which]: { cut, nudge: { ...NUDGE0 }, placed: null, fresh: true } }
+      if (which === 'back') setDropBack(false)
+      /* editing an existing product's back only: bring in the saved front so the sizes match */
+      if (which === 'back' && !next.front && d.src_paths?.front) next.front = { cut: await cutFromUrl(publicUrl(d.src_paths.front)!), nudge: { ...NUDGE0, ...(d.nudge?.front || {}) }, placed: null, fresh: false }
+      await layout(next)
+    } catch (e) { setErr((e as Error).message) } finally { setBusy('') }
+  }
+  /* adjust a saved photo without re-uploading */
+  const adjustSaved = async (which: 'front' | 'back') => {
+    const p = d.src_paths?.[which]; if (!p) return
+    try { setBusy('Loading…'); const next = { ...facesRef.current }
+      for (const w of ['front', 'back'] as const) if (!next[w] && d.src_paths?.[w] && (w === which || w === 'front')) next[w] = { cut: await cutFromUrl(publicUrl(d.src_paths[w]!)!), nudge: { ...NUDGE0, ...(d.nudge?.[w] || {}) }, placed: null, fresh: false }
+      await layout(next) } catch (e) { setErr((e as Error).message) } finally { setBusy('') }
+  }
+  const nudgeT = useRef(0)
+  const nudge = (which: 'front' | 'back', k: keyof Nudge, v: number) => {
+    const f = facesRef.current[which]; if (!f) return
+    const n = { ...f.nudge, [k]: k === 's' ? Math.min(1.4, Math.max(0.6, v)) : Math.min(0.2, Math.max(-0.2, v)) }
+    const next = { ...facesRef.current, [which]: { ...f, nudge: n } }
+    setFaces(next); facesRef.current = next
+    clearTimeout(nudgeT.current); nudgeT.current = window.setTimeout(() => layout(facesRef.current), 120)
+  }
+  const fp = faces.front?.placed, bp = faces.back?.placed
+  const vaultUrl = fp?.photoUrl ?? publicUrl(d.front_path, d.updated_at)
+  const frontUrl = fp?.cutUrl ?? publicUrl(d.front_cut_path ?? d.front_path, d.updated_at)
+  const backUrl = dropBack ? undefined : bp?.cutUrl ?? publicUrl(d.back_path, d.updated_at)
 
   const save = async () => {
     const slug = d.slug || slugify(d.name)
     if (!d.name.trim()) return setErr('Give the product a name.')
     if (!slug) return setErr('The name needs at least one letter or number.')
-    if (!d.front_path && !front) return setErr('Add a front photo.')
+    if (!d.front_path && !fp) return setErr('Add a front photo.')
     setErr('')
     try {
       const stamp = Date.now().toString(36), old: string[] = []
-      const upload = async (p: Pending, name: string) => {
-        setBusy(`Uploading ${name} photo…`)
+      const upload = async (blob: Blob, name: string) => {
+        setBusy(`Uploading ${name}…`)
         const path = `${slug}/${name}-${stamp}.webp`
-        const { error } = await sb.storage.from('products').upload(path, p.blob, { contentType: 'image/webp', cacheControl: '31536000', upsert: false })
+        const { error } = await sb.storage.from('products').upload(path, blob, { contentType: 'image/webp', cacheControl: '31536000', upsert: false })
         if (error) throw error
         return path
       }
-      const row: Draft = { ...d, slug, name: d.name.trim() }
-      if (front) { if (d.front_path) old.push(d.front_path); if (d.front_cut_path) old.push(d.front_cut_path); row.front_path = await upload(front, 'front'); row.front_cut_path = null; row.blur = front.blur }
-      if (back) { if (d.back_path) old.push(d.back_path); row.back_path = await upload(back, 'back') }
-      else if (dropBack && d.back_path) { old.push(d.back_path); row.back_path = null }
+      const row: Draft = { ...d, slug, name: d.name.trim(), nudge: { ...(d.nudge || {}) }, src_paths: { ...(d.src_paths || {}) } }
+      const F = faces.front, B = faces.back
+      if (F?.placed) {
+        old.push(...[d.front_path, d.front_cut_path].filter(Boolean) as string[])
+        row.front_path = await upload(F.placed.photo!, 'front'); row.front_cut_path = await upload(F.placed.cut, 'front-cut'); row.blur = F.placed.blur
+        row.nudge = { ...row.nudge, front: F.nudge, frontBox: F.placed.box } as Row['nudge']
+        if (F.fresh) { if (d.src_paths?.front) old.push(d.src_paths.front); row.src_paths!.front = await upload(await rawBlob(F.cut), 'front-src') }
+      }
+      if (B?.placed && !dropBack) {
+        if (d.back_path) old.push(d.back_path)
+        row.back_path = await upload(B.placed.cut, 'back'); row.nudge = { ...row.nudge, back: B.nudge }
+        if (B.fresh) { if (d.src_paths?.back) old.push(d.src_paths.back); row.src_paths!.back = await upload(await rawBlob(B.cut), 'back-src') }
+      } else if (dropBack && d.back_path) { old.push(d.back_path); if (d.src_paths?.back) old.push(d.src_paths.back); row.back_path = null; delete row.src_paths!.back; delete (row.nudge as any).back }
       setBusy('Saving…')
       const { id, updated_at, ...fields } = row as Draft & { created_at?: string }
       delete (fields as any).created_at
@@ -154,9 +201,25 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
     setBusy('Deleting…')
     const { error } = await sb.from('products').delete().eq('id', draft.id)
     if (error) { setErr(error.message); setBusy(''); return }
-    const files = [draft.front_path, draft.front_cut_path, draft.back_path, ...draft.extra_paths.map(e => e.path)].filter(Boolean) as string[]
+    const files = [draft.front_path, draft.front_cut_path, draft.back_path, draft.src_paths?.front, draft.src_paths?.back, ...draft.extra_paths.map(e => e.path)].filter(Boolean) as string[]
     if (files.length) await sb.storage.from('products').remove(files)
     onDone()
+  }
+  const Nudges = ({ which }: { which: 'front' | 'back' }) => {
+    const f = faces[which]
+    if (!f) return d.src_paths?.[which] ? <button type="button" className="ghost small" onClick={() => adjustSaved(which)} disabled={!!busy}>Adjust framing</button> : null
+    const n = f.nudge
+    return (
+      <div className="nudges" data-face={which}>
+        {([['s', 'Size', `${Math.round(n.s * 100)}%`], ['x', 'Left / right', `${Math.round(n.x * 100)}`], ['y', 'Up / down', `${Math.round(n.y * 100)}`]] as const).map(([k, label, val]) => (
+          <div className="nudge" key={k}><span>{label}</span>
+            <button type="button" className="ghost small" aria-label={`${which} ${label} less`} data-n={`${which}-${k}-minus`} onClick={() => nudge(which, k, n[k] - STEPS[k])}>−</button>
+            <output>{val}</output>
+            <button type="button" className="ghost small" aria-label={`${which} ${label} more`} data-n={`${which}-${k}-plus`} onClick={() => nudge(which, k, n[k] + STEPS[k])}>+</button>
+          </div>))}
+        <button type="button" className="ghost small" onClick={() => { const next = { ...faces, [which]: { ...f, nudge: { ...NUDGE0 } } }; layout(next) }}>Reset</button>
+      </div>
+    )
   }
   return (
     <section className="adm-edit">
@@ -187,11 +250,16 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
         </div>
         <div className="adm-media">
           <div className="pickers">
-            <Drop label="Front photo" id="f-front" onFile={f => pick(f, 'front')} has={!!frontUrl} />
-            <Drop label="Back photo (optional)" id="f-back" onFile={f => pick(f, 'back')} has={!!backUrl} onClear={backUrl ? () => { setBack(null); setDropBack(true) } : undefined} />
+            <div><Drop label="Front photo" id="f-front" onFile={f => pick(f, 'front')} has={!!frontUrl} /><Nudges which="front" /></div>
+            <div><Drop label="Back photo (optional)" id="f-back" onFile={f => pick(f, 'back')} has={!!backUrl} onClear={backUrl ? () => { setFaces(x => ({ ...x, back: null })); setDropBack(true) } : undefined} /><Nudges which="back" /></div>
           </div>
-          <p className="note">Photos are resized to 1600px WebP in your browser before upload. A plain backdrop or a transparent cut-out looks best. No back photo: the site shows a plain back made from the front outline.</p>
-          {frontUrl ? <FlipPreview front={frontUrl} back={backUrl} /> : <div className="flip-empty">Add a front photo to preview</div>}
+          <p className="note">Any photo works, even a phone shot on a bed: the background is removed, the piece is cropped, centred on the house frame and lightly warmed, and the back is sized to the front. {method && <b id="f-method">{method}</b>}</p>
+          {frontUrl ? (
+            <div className="previews">
+              <figure className="vault-prev"><div className="vault-frame">{vaultUrl && <img id="prev-vault" src={vaultUrl} alt="In the vault" />}</div><figcaption>In the vault</figcaption></figure>
+              <FlipPreview front={frontUrl} back={backUrl} />
+            </div>
+          ) : <div className="flip-empty">Add a front photo to preview</div>}
         </div>
       </div>
       {err && <p className="err" role="alert">{err}</p>}
@@ -227,6 +295,7 @@ function FlipPreview({ front, back }: { front: string; back?: string }) {
       <div className="flip-prev-stage" onPointerDown={e => { (e.target as Element).setPointerCapture(e.pointerId); Object.assign(st.current, { on: true, x0: e.clientX, a0: st.current.a }) }}
         onPointerMove={e => { if (!st.current.on) return; st.current.a = st.current.a0 + (e.clientX - st.current.x0) * 0.8; paint(st.current.a, false) }}
         onPointerUp={() => { st.current.on = false; snap(st.current.a) }} onPointerCancel={() => { st.current.on = false; snap(st.current.a) }}>
+        <div className="flip-prev-plinth" aria-hidden="true" />
         <div className="flip-prev-card" ref={card}>
           <div className="face f"><img src={front} alt="Front preview" draggable={false} /></div>
           <div className="face b">{back ? <img src={back} alt="Back preview" draggable={false} /> : <div className="plain" style={mask} />}</div>
