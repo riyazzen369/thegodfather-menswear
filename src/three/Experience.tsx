@@ -619,7 +619,8 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
     box(VW * 2 + 0.5, 0.36, 0.3, 0, VH + 0.18, VZ, m.door); box(VW * 2 + 0.6, 0.03, 0.04, 0, VH + 0.02, VZ + 0.16, m.goldDim)
     for (const sx of [-1, 1]) box(0.3, VH + 0.36, 0.3, sx * (VW + 0.15), (VH + 0.36) / 2, VZ, m.door)
     const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.035, VH - 0.1), m.seam); seam.position.set(0, VH / 2, VZ + 0.07); add(seam)
-    const lock = box(0.16, 0.22, 0.05, 0, 1.45, VZ + 0.09, m.gold)
+    /* the lock rides on the left door */
+    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, 0.05), m.gold); lock.position.set(VW - 0.08, 1.45, 0.09); vl.add(lock)
     const glint = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.glint); glint.position.set(0, 1.45, VZ + 0.2); glint.scale.set(0.7, 0.7, 1); add(glint)
     /* Lorenzo + a soft contact shadow */
     const geo = new THREE.PlaneGeometry(LEAD.h * LEAD.aspect, LEAD.h); geo.translate(0, LEAD.h / 2, 0)
