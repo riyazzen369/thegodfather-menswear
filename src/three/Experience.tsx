@@ -380,9 +380,9 @@ function makeWalk(endY: number): WalkPath {
      step through, take the stairs, glide onto the first anchor */
   /* Lorenzo walks a couple of metres ahead; the camera follows at a walking pace, slows at the foot of the stairs,
      and stops short of the golden wardrobe while he unlocks it, then glides onto the first anchor */
-  const dist = spline([[0, 0], [1.6, at(1) * 0.7], [3.6, at(3)], [4.9, at(4) + 0.4], [5.8, at(5)], [8.6, at(7)], [10.0, total - 1.7], [11.4, total - 1.25], [WALK_MS / 1000, total]])
+  const dist = spline([[0, 0], [0.65, at(1) * 0.7], [1.4, at(3)], [1.9, at(4) + 0.4], [2.2, at(5)], [2.8, at(7)], [3.35, total - 1.7], [4.85, total - 1.25], [WALK_MS / 1000, total]])
   /* how far ahead of the camera he is (along the same path, then on past its end to the wardrobe) */
-  const lead = spline([[0, 1.3], [1.3, 2.2], [2.4, 2.5], [8.6, 2.5], [10.0, 5.3]])
+  const lead = spline([[0, 1.3], [0.55, 2.2], [1.0, 2.5], [2.8, 2.5], [3.4, 5.3]])
   return { curve, total, dist, lead, key: endY }
 }
 /* Lorenzo, seen from behind with the cat in his arm: a keyed, generated walk cycle (24 frames, 2 steps) in one atlas,
@@ -422,7 +422,7 @@ const cellOff = (i: number, v: THREE.Vector2) => v.set((i % LEAD.cols) / LEAD.co
 /* floor height in the walk's local frame: shop, stair slope, vault */
 const floorAt = (z: number) => z >= WARD_Z ? SHOP_Y : z <= STAIR_END ? 0 : SHOP_Y * (z - STAIR_END) / (WARD_Z - STAIR_END) - SHOP_Y / STEPS * 0.5
 /* the golden wardrobe in the vault: where he stops, when it unlocks and opens */
-const VAULT_DOOR_Z = -8.4, STOP_PAST = 3.55, KEY_AT = 10.15, OPEN_AT = 10.95, OPEN_S = 1.15, INTO_LIGHT = 11.35
+const VAULT_DOOR_Z = -8.4, STOP_PAST = 3.55, KEY_AT = 3.5, OPEN_AT = 4.15, OPEN_S = 1.25, INTO_LIGHT = 4.8
 function quad(a: number[], b: number[], c: number[], d: number[], uvRepeat = [1, 1]) {
   const g = new THREE.BufferGeometry()
   g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...d], 3))
@@ -641,7 +641,7 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
     const gOpen = easeInOut(clamp01(t / 0.95)) * 1.45
     b.gl.rotation.y = gOpen; b.gr.rotation.y = -gOpen
     /* the hidden wardrobe swings open as he reaches it */
-    const wOpen = easeInOut(clamp01((t - 2.4) / 1.2))
+    const wOpen = easeInOut(clamp01((t - 0.7) / 0.75))
     b.wl.rotation.y = -wOpen * 1.75; b.wr.rotation.y = wOpen * 1.75
     /* glows fade as the camera reaches them, so we never fly through a sheet of light */
     const cz = camera.position.z
@@ -658,7 +658,7 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
     b.vl.rotation.y = vOpen * 1.6; b.vr.rotation.y = -vOpen * 1.6
     const turn = smooth(KEY_AT + 0.35, KEY_AT + 0.6, t) * (1 - smooth(KEY_AT + 0.75, OPEN_AT + 0.2, t))
     mats.glint.uniforms.uI.value = 0.9 * turn; b.glint.visible = turn > 0.002
-    mats.seam.opacity = smooth(KEY_AT + 0.45, OPEN_AT, t) * (1 - vOpen); b.seam.visible = mats.seam.opacity > 0.01
+    mats.seam.opacity = smooth(KEY_AT + 0.45, OPEN_AT, t) * (1 - smooth(0, 0.2, vOpen)); b.seam.visible = mats.seam.opacity > 0.01
     const flood = smooth(OPEN_AT - 0.1, OPEN_AT + 0.55, t) * (1 - 0.7 * smooth(OPEN_AT + 0.7, WALK_MS / 1000, t))
     mats.flood.uniforms.uI.value = 0.55 * flood; b.flood.visible = flood > 0.002
     leader(t, camera)
