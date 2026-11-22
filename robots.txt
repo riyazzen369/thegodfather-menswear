@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.thegodfatherclothings.in/sitemap.xml
+Sitemap: https://riyazzen369.github.io/thegodfather-menswear/sitemap.xml
