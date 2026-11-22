@@ -365,7 +365,7 @@ export default function App() {
     const pre = (u: string) => { const i = new Image(); i.decoding = 'async'; i.src = u; i.decode?.().catch(() => {}) }
     const t = window.setTimeout(() => {
       pre(STORE(Math.max(innerWidth, innerHeight * 16 / 9) * Math.min(2, devicePixelRatio || 1)))
-      pre(TAILOR.host); pre(TAILOR.curtain)
+      pre(TAILOR.host); pre(TAILOR.curtain); pre(TAILOR.walk)
       const est = innerWidth >= 960 ? Math.min(innerWidth * 0.34, innerHeight * 0.75 - 170) : Math.min(innerWidth * 0.66, innerHeight * 0.56 - 100)
       ITEMS.slice(0, 3).forEach(it => preloadPic(it.images[0].src, est))
     }, 500)
