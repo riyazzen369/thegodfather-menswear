@@ -1,0 +1,578 @@
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { CONTACT, ITEMS, SAMPLE_PRICES, LOGO, LOGO_SMALL, STORE, TAILOR, type Item, type Choice } from './data'
+import Tailor from './Tailor'
+import Grid from './Grid'
+import { rig, TRANSITION_MS } from './rig'
+
+const Experience = lazy(() => import('./three/Experience'))
+
+const N = ITEMS.length, LAST = N
+const pad = (n: number) => String(n).padStart(2, '0')
+const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
+const wa = (text: string) => `https://wa.me/${CONTACT.whatsapp}?text=${encodeURIComponent(text)}`
+const BOOK_HREF = CONTACT.bookingUrl || wa('Hello, I would like to book a fitting.')
+const enquire = (it: Item) => wa(`Hello, I would like to enquire about the ${it.name}.`)
+const store = {
+  get: (k: string) => { try { return sessionStorage.getItem(k) } catch { return null } },
+  set: (k: string, v: string) => { try { sessionStorage.setItem(k, v) } catch { /* private mode */ } }
+}
+function webglOK() {
+  try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')) } catch { return false }
+}
+
+const WA_ICON = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z" /><path d="M9.2 8.6c.3 2.6 2.1 4.6 5.4 5.6l.9-1.3-1.7-.8-.7.7c-1-.4-2-1.4-2.4-2.4l.7-.7-.8-1.7z" /></svg>
+const CALL_ICON = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M6.5 3.5h3l1.5 4-2 1.3a10 10 0 0 0 6.2 6.2l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A16 16 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z" /></svg>
+const Chev = ({ d }: { d: 'l' | 'r' }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={d === 'l' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'} /></svg>
+
+export default function App() {
+  const reduced = useRef(matchMedia('(prefers-reduced-motion: reduce)').matches).current
+  const [mode] = useState<'3d' | '2d'>(() => (!reduced && webglOK() && !new URLSearchParams(location.search).has('2d')) ? '3d' : '2d')
+  const is3D = mode === '3d'
+  const [glReady, setGlReady] = useState(false)
+  const [view, setViewState] = useState<'gate' | 'transition' | 'tailor' | 'wardrobe' | 'grid'>(() => store.get('gf-entered') ? 'tailor' : 'gate')
+  const viewRef = useRef(view)
+  const setView = (v: typeof view) => { viewRef.current = v; rig.view = v; setViewState(v) }
+  const [index, setIndexState] = useState(-1)
+  const indexRef = useRef(-1)
+  const [sheet, setSheet] = useState<number | null>(null)
+  const [sheetShown, setSheetShown] = useState(false)
+  const sheetRef = useRef<number | null>(null)
+  const [sound, setSound] = useState(false)
+  const [gateKey, setGateKey] = useState(0)
+  const [fadeBlack, setFadeBlack] = useState(false)
+  type Phase = 'off' | 'in' | 'out' | 'lead'
+  const [tailor, setTailor] = useState<Phase>(() => store.get('gf-entered') ? 'in' : 'off')
+  const tailorRef = useRef<Phase>(tailor)
+  const setTailorPhase = (p: Phase) => { tailorRef.current = p; setTailor(p) }
+  const [tailorQuick, setTailorQuick] = useState(() => !!store.get('gf-entered'))
+  const [gridCat, setGridCat] = useState<string>('all')
+
+  const track = useRef<HTMLDivElement>(null)
+  const live = useRef<HTMLDivElement>(null)
+  const crest = useRef<HTMLButtonElement>(null)
+  const returnFocus = useRef<HTMLElement | null>(null)
+  const enterTimers = useRef<number[]>([])
+
+  rig.view = viewRef.current
+  const slides = () => [...(track.current?.querySelectorAll<HTMLElement>('.slide') ?? [])]
+
+  /* ---------- layout for the 3D scene ---------- */
+  const measure = useCallback(() => {
+    const s = slides()[0]; if (!s) return
+    const st = s.querySelector('.stage') as HTMLElement
+    const sr = s.getBoundingClientRect(), r = st.getBoundingClientRect()
+    rig.layout = { W: innerWidth, H: innerHeight, sx: r.left - sr.left + r.width / 2, sy: r.top + r.height / 2, sw: r.width, sh: r.height, slideW: s.offsetWidth, v: rig.layout.v + 1 }
+  }, [])
+  useLayoutEffect(() => { measure() })
+
+  /* ---------- carousel ---------- */
+  const setActive = useCallback((i: number, dir = 1, force = false) => {
+    if (i === indexRef.current && !force) return
+    const prev = indexRef.current
+    indexRef.current = i; rig.index = i; rig.dir = dir
+    rig.activeAt[i] = performance.now()
+    rig.loadUpTo = Math.max(rig.loadUpTo, i + 1)
+    setIndexState(i)
+    const ss = slides()
+    const s = ss[i]
+    if (s) { s.style.setProperty('--from', (dir >= 0 ? 10 : -10) + '%'); s.classList.remove('is-active'); void s.offsetWidth; s.classList.add('is-active') }
+    ss.forEach((el, k) => { if (k !== i) el.classList.remove('is-active') })
+    if (live.current) live.current.textContent = i === LAST ? 'The wardrobe is private. Visit us or book a fitting.' : `Item ${i + 1} of ${N}. ${ITEMS[i].name}.`
+    if (prev !== -1 && ss[prev] && ss[prev].contains(document.activeElement)) track.current?.focus({ preventScroll: true })
+  }, [])
+
+  const nudge = (dir: number) => {
+    if (reduced) return
+    rig.nudgeAt = performance.now(); rig.nudgeDir = dir
+    track.current?.animate([{ transform: 'none' }, { transform: `translateX(${-dir * 26}px)` }, { transform: 'none' }], { duration: 560, easing: 'cubic-bezier(.3,.7,.3,1)' })
+  }
+  /* a programmatic move in flight: settle() must not override it on slow frames */
+  const flight = useRef<{ left: number; until: number } | null>(null)
+  const goTo = useCallback((i: number, instant = false) => {
+    const t = track.current!; const ss = slides()
+    if (i < 0 || i > LAST) { nudge(i < 0 ? -1 : 1); return }
+    const dir = Math.sign(i - indexRef.current) || 1
+    flight.current = { left: ss[i].offsetLeft, until: performance.now() + 1500 }
+    t.scrollTo({ left: ss[i].offsetLeft, behavior: instant || reduced ? 'auto' : 'smooth' })
+    setActive(i, dir)
+  }, [setActive])
+
+  useEffect(() => {
+    const t = track.current!
+    let settleT = 0, dragging = false, moved = false
+    let down: null | { x: number; left: number; lastX: number; lastT: number; v: number; id: number } = null
+    const nearest = () => { const x = t.scrollLeft; let best = 0, d = Infinity; slides().forEach((s, k) => { const dd = Math.abs(s.offsetLeft - x); if (dd < d) { d = dd; best = k } }); return best }
+    const settle = () => {
+      if (dragging) return
+      const f = flight.current
+      if (f) { if (Math.abs(t.scrollLeft - f.left) > 2 && performance.now() < f.until) return; flight.current = null }
+      const n = nearest(); if (n !== indexRef.current) setActive(n, Math.sign(n - indexRef.current)) }
+    const onScroll = () => {
+      rig.scrollP = t.scrollLeft / (slides()[0]?.offsetWidth || 1)
+      clearTimeout(settleT); settleT = window.setTimeout(settle, 140)
+    }
+    const onScrollEnd = () => { clearTimeout(settleT); settle() }
+    t.addEventListener('scroll', onScroll, { passive: true })
+    t.addEventListener('scrollend', onScrollEnd)
+
+    const pdown = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0 || sheetRef.current !== null) return
+      down = { x: e.clientX, left: t.scrollLeft, lastX: e.clientX, lastT: performance.now(), v: 0, id: e.pointerId }; moved = false
+    }
+    const pmove = (e: PointerEvent) => {
+      if (!down || e.pointerId !== down.id) return
+      const dx = e.clientX - down.x
+      if (!dragging && Math.abs(dx) > 6) { dragging = true; moved = true; t.classList.add('dragging'); try { t.setPointerCapture(e.pointerId) } catch { /* noop */ } }
+      if (!dragging) return
+      const n = performance.now(); down.v = (e.clientX - down.lastX) / Math.max(1, n - down.lastT); down.lastX = e.clientX; down.lastT = n
+      const max = t.scrollWidth - t.clientWidth
+      let want = down.left - dx, over = 0
+      if (want < 0) { over = want; want = 0 } else if (want > max) { over = want - max; want = max }
+      t.scrollLeft = want; rig.over = over
+      t.style.transform = over ? `translateX(${-over * 0.3}px)` : ''
+    }
+    const pup = (e: PointerEvent) => {
+      if (!down || e.pointerId !== down.id) return
+      const was = dragging, dx = e.clientX - down.x, v = performance.now() - down.lastT > 90 ? 0 : down.v
+      down = null
+      if (!was) return
+      dragging = false; rig.over = 0
+      if (t.style.transform) { t.animate([{ transform: t.style.transform }, { transform: 'none' }], { duration: 450, easing: 'cubic-bezier(.2,.7,.2,1)' }); t.style.transform = '' }
+      const base = indexRef.current
+      let to = base
+      if (dx < -60 || v < -0.45) to = base + 1; else if (dx > 60 || v > 0.45) to = base - 1
+      to = Math.max(0, Math.min(LAST, to))
+      const left = slides()[to].offsetLeft
+      flight.current = { left, until: performance.now() + 1500 }
+      t.scrollTo({ left, behavior: reduced ? 'auto' : 'smooth' })
+      setActive(to, Math.sign(to - base) || 1)
+      // re-enable snapping only once the glide has arrived, so snap can never pull it back mid-way
+      const started = performance.now()
+      const fin = () => {
+        if (Math.abs(t.scrollLeft - left) > 2 && performance.now() - started < 1400) { t.addEventListener('scrollend', fin, { once: true }); setTimeout(fin, 300); return }
+        if (!t.classList.contains('dragging')) return
+        t.scrollLeft = left; t.classList.remove('dragging')
+      }
+      t.addEventListener('scrollend', fin, { once: true }); setTimeout(fin, 700)
+    }
+    const click = (e: MouseEvent) => {
+      if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; return }
+      const s = (e.target as HTMLElement).closest('.slide') as HTMLElement | null
+      if (s && +s.dataset.i! !== indexRef.current) { e.preventDefault(); goTo(+s.dataset.i!) }
+    }
+    t.addEventListener('pointerdown', pdown)
+    window.addEventListener('pointermove', pmove)
+    window.addEventListener('pointerup', pup)
+    window.addEventListener('pointercancel', pup)
+    t.addEventListener('click', click, true)
+
+    /* wheel + trackpad: one gesture = one piece */
+    let acc = 0, lock = false, quietT = 0, lockT = 0
+    const tryUnlock = () => { acc = 0; const left = lockT - performance.now(); if (left <= 0) lock = false; else quietT = window.setTimeout(tryUnlock, left) }
+    const wheel = (e: WheelEvent) => {
+      if (viewRef.current !== 'wardrobe' || sheetRef.current !== null) return
+      e.preventDefault()
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+      clearTimeout(quietT); quietT = window.setTimeout(tryUnlock, 160)
+      if (lock) return
+      acc += e.deltaMode === 1 ? d * 30 : d
+      if (Math.abs(acc) >= 30) { const dir = acc > 0 ? 1 : -1; acc = 0; lock = true; lockT = performance.now() + 650; goTo(indexRef.current + dir) }
+    }
+    window.addEventListener('wheel', wheel, { passive: false })
+    const resize = () => { measure(); if (indexRef.current >= 0) t.scrollTo({ left: slides()[indexRef.current].offsetLeft, behavior: 'auto' }); rig.scrollP = t.scrollLeft / (slides()[0]?.offsetWidth || 1) }
+    window.addEventListener('resize', resize)
+    return () => {
+      t.removeEventListener('scroll', onScroll); t.removeEventListener('scrollend', onScrollEnd)
+      t.removeEventListener('pointerdown', pdown); window.removeEventListener('pointermove', pmove)
+      window.removeEventListener('pointerup', pup); window.removeEventListener('pointercancel', pup)
+      t.removeEventListener('click', click, true); window.removeEventListener('wheel', wheel); window.removeEventListener('resize', resize)
+    }
+  }, [goTo, setActive, measure])
+
+  /* ---------- pointer + gyro (gate parallax, red ring) ---------- */
+  const ring = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const pm = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && ring.current) ring.current.style.transform = `translate3d(${e.clientX}px,${e.clientY}px,0)`
+      rig.pointer.x = (e.clientX / innerWidth) * 2 - 1; rig.pointer.y = -((e.clientY / innerHeight) * 2 - 1)
+    }
+    const ori = (e: DeviceOrientationEvent) => {
+      if (e.gamma == null || e.beta == null) return
+      rig.pointer.x = Math.max(-1, Math.min(1, e.gamma / 25)); rig.pointer.y = Math.max(-1, Math.min(1, (45 - e.beta) / 25))
+    }
+    window.addEventListener('pointermove', pm)
+    window.addEventListener('deviceorientation', ori)
+    return () => { window.removeEventListener('pointermove', pm); window.removeEventListener('deviceorientation', ori) }
+  }, [])
+
+  /* ---------- gate -> transition -> wardrobe ---------- */
+  /* after the entry, the tailor greets you before the wardrobe */
+  const showTailor = useCallback(() => {
+    enterTimers.current.forEach(clearTimeout); enterTimers.current = []
+    if (sheetRef.current !== null) closeSheet(true)
+    indexRef.current = -1; rig.index = -1
+    slides().forEach(s => s.classList.remove('is-active'))
+    setView('tailor'); setTailorPhase('in')
+  }, [])
+  const callTailor = useCallback(() => { setTailorQuick(true); showTailor() }, [showTailor])
+  const finishEnter = useCallback(() => {
+    if (viewRef.current !== 'transition') return
+    setTailorQuick(false); showTailor()
+  }, [showTailor])
+  /* into the golden bunker: put the wardrobe rail at `target`, start the camera descent */
+  const openVault = useCallback((target = 0, descent = true) => {
+    const t = track.current!, ss = slides()
+    flight.current = null
+    t.scrollTo({ left: ss[target].offsetLeft, behavior: 'auto' })
+    rig.scrollP = t.scrollLeft / (ss[0]?.offsetWidth || 1); rig.snap = true
+    rig.descentAt = descent && !reduced ? performance.now() : 0
+    setView('wardrobe'); setActive(target, 1, true)
+    track.current?.focus({ preventScroll: true })
+  }, [setActive, reduced])
+  const toGrid = useCallback((cat = 'all') => {
+    setGridCat(cat); setView('grid')
+    requestAnimationFrame(() => { const g = document.getElementById('grid'); if (g) g.scrollTop = 0; document.getElementById('grid-title')?.focus({ preventScroll: true }) })
+  }, [])
+  /* the shopkeeper's choices */
+  const leaveTailor = useCallback((to: 'premium' | 'tour' | 'skip' | 'tailoring' | 'visit') => {
+    if (viewRef.current !== 'tailor' || tailorRef.current !== 'in') return
+    if (to === 'premium' && !reduced) {
+      /* through the glass doors, past the slats, into the private room; the wardrobe opens and we go down into the vault */
+      setTailorPhase('lead')
+      window.setTimeout(() => openVault(0, true), 3300)
+      window.setTimeout(() => setTailorPhase('off'), 3950)
+      return
+    }
+    setTailorPhase('out')
+    window.setTimeout(() => {
+      if (to === 'tour') toGrid()
+      else if (to === 'tailoring') toGrid('formal')
+      else if (to === 'visit') openVault(LAST, false)
+      else openVault(0, to === 'premium')
+      window.setTimeout(() => setTailorPhase('off'), reduced ? 320 : 520)
+    }, reduced ? 0 : 480)
+  }, [openVault, toGrid, reduced])
+  const choose = useCallback((c: Choice) => leaveTailor(c.id), [leaveTailor])
+  const hostNav = useCallback((n: 'collections' | 'tailoring' | 'visit' | 'private') =>
+    leaveTailor(n === 'collections' ? 'tour' : n === 'private' ? 'premium' : n), [leaveTailor])
+  /* from the attire tour straight down to the vault */
+  const gridToVault = useCallback(() => {
+    if (sheetRef.current !== null) closeSheet(true)
+    setFadeBlack(true)
+    window.setTimeout(() => { openVault(0, true); setFadeBlack(false) }, reduced ? 150 : 380)
+  }, [openVault, reduced])
+  const enter = useCallback(() => {
+    if (viewRef.current !== 'gate') return
+    store.set('gf-entered', '1')
+    const t = track.current!
+    t.scrollTo({ left: 0, behavior: 'auto' }); rig.scrollP = 0
+    indexRef.current = -1; rig.index = -1
+    slides().forEach(s => s.classList.remove('is-active'))
+    rig.transStart = performance.now()
+    setView('transition')
+    if (reduced || !is3D) {
+      enterTimers.current.push(window.setTimeout(finishEnter, reduced ? 450 : 1400))
+    } else if (rig.freeze == null) {
+      /* the tailor fades in as the dolly comes through the curtains (the last ~0.6s of the 2.5s entry) */
+      enterTimers.current.push(window.setTimeout(finishEnter, TRANSITION_MS - 600))
+    }
+  }, [finishEnter, setActive, is3D, reduced])
+
+  const toGate = useCallback(() => {
+    if (sheetRef.current !== null) closeSheet(true)
+    setFadeBlack(true)
+    window.setTimeout(() => {
+      rig.gateAt = performance.now()
+      setView('gate'); setGateKey(k => k + 1)
+      setFadeBlack(false)
+      crest.current?.focus({ preventScroll: true })
+    }, reduced ? 150 : 380)
+  }, [reduced])
+
+  /* first load: refresh in the same session goes straight to the wardrobe */
+  useEffect(() => {
+    rig.view = viewRef.current
+    rig.gateAt = performance.now()
+  }, [])
+
+  /* ---------- warm the cache for the next scenes while the gate is up ---------- */
+  useEffect(() => {
+    const pre = (u: string) => { const i = new Image(); i.decoding = 'async'; i.src = u; i.decode?.().catch(() => {}) }
+    const t = window.setTimeout(() => {
+      pre(STORE(Math.max(innerWidth, innerHeight * 16 / 9) * Math.min(2, devicePixelRatio || 1)))
+      pre(TAILOR.host); pre(TAILOR.curtain)
+      ITEMS.slice(0, 2).forEach(it => pre(it.images[0].src))
+    }, 500)
+    return () => clearTimeout(t)
+  }, [])
+
+  /* ---------- keyboard ---------- */
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (sheetRef.current !== null) {
+        if (e.key === 'Escape') { e.preventDefault(); closeSheet() }
+        else if (e.key === 'Tab') trapFocus(e)
+        return
+      }
+      const v = viewRef.current
+      if (v === 'gate' && (e.key === 'Enter' || e.key === ' ') && document.activeElement === document.body) { e.preventDefault(); enter(); return }
+      if (v === 'transition' && e.key === 'Escape') { finishEnter(); return }
+      if (v === 'tailor') return  /* Esc there finishes the intro (handled in Tailor) */
+      if (v !== 'wardrobe') return
+      if (e.key === 'ArrowRight') { e.preventDefault(); goTo(indexRef.current + 1) }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(indexRef.current - 1) }
+      else if (e.key === 'Home') { e.preventDefault(); goTo(0) }
+      else if (e.key === 'End') { e.preventDefault(); goTo(LAST) }
+    }
+    document.addEventListener('keydown', key)
+    return () => document.removeEventListener('keydown', key)
+  }, [enter, finishEnter, goTo, leaveTailor])
+
+  /* ---------- sound: soft low room tone, off by default ---------- */
+  const audio = useRef<{ ac: AudioContext; master: GainNode } | null>(null)
+  const toggleSound = () => {
+    if (!audio.current) {
+      const ac = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const master = ac.createGain(); master.gain.value = 0; master.connect(ac.destination)
+      const len = ac.sampleRate * 4, buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0)
+      let last = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.2 }
+      const src = ac.createBufferSource(); src.buffer = buf; src.loop = true
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220
+      src.connect(lp).connect(master); src.start()
+      const hum = ac.createOscillator(); hum.frequency.value = 55; const hg = ac.createGain(); hg.gain.value = 0.05
+      hum.connect(hg).connect(master); hum.start()
+      audio.current = { ac, master }
+    }
+    const { ac, master } = audio.current
+    const on = !sound
+    if (ac.state === 'suspended') ac.resume()
+    master.gain.cancelScheduledValues(ac.currentTime); master.gain.setTargetAtTime(on ? 0.35 : 0, ac.currentTime, 0.6)
+    setSound(on)
+  }
+
+  /* ---------- detail sheet ---------- */
+  const sheetEl = useRef<HTMLElement>(null), gallery = useRef<HTMLDivElement>(null), sheetBody = useRef<HTMLDivElement>(null)
+  const [gIdx, setGIdx] = useState(0)
+  const closeT = useRef(0)
+  const openSheet = (i: number, opener: HTMLElement) => {
+    clearTimeout(closeT.current)
+    returnFocus.current = opener
+    sheetRef.current = i; setSheet(i); setGIdx(0)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      setSheetShown(true)
+      if (gallery.current) gallery.current.scrollLeft = 0
+      if (sheetBody.current) sheetBody.current.scrollTop = 0
+      setTimeout(() => (document.getElementById('close') as HTMLElement)?.focus({ preventScroll: true }), 60)
+    }))
+  }
+  function closeSheet(instant = false) {
+    if (sheetRef.current === null) return
+    sheetRef.current = null
+    setSheetShown(false)
+    if (sheetEl.current) { sheetEl.current.classList.remove('dragging'); sheetEl.current.style.transform = '' }
+    if (instant) setSheet(null); else closeT.current = window.setTimeout(() => setSheet(null), reduced ? 320 : 560)
+    const rf = returnFocus.current
+    if (rf && (viewRef.current === 'wardrobe' || viewRef.current === 'grid')) { rf.focus({ preventScroll: true }); setTimeout(() => rf.focus({ preventScroll: true }), 0); requestAnimationFrame(() => rf.focus({ preventScroll: true })) }
+  }
+  function trapFocus(e: KeyboardEvent) {
+    const f = [...(sheetEl.current?.querySelectorAll<HTMLElement>('a[href],button,[tabindex]:not([tabindex="-1"])') ?? [])].filter(el => el.offsetParent !== null)
+    if (!f.length) return
+    const first = f[0], last = f[f.length - 1]
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+  }
+  const isBottomSheet = () => !matchMedia('(min-width:900px)').matches
+  /* swipe down to close: handle (pointer) and top of the content (touch) */
+  const sd = useRef<null | { y: number; x: number; t: number; id: number; active: boolean }>(null)
+  const grabDown = (e: React.PointerEvent) => {
+    if (!isBottomSheet() || (e.target as HTMLElement).closest('.close')) return
+    sd.current = { y: e.clientY, x: e.clientX, t: performance.now(), id: e.pointerId, active: false }
+  }
+  const grabMove = (e: React.PointerEvent) => {
+    const s = sd.current; if (!s || e.pointerId !== s.id) return
+    const dy = e.clientY - s.y
+    if (!s.active) {
+      if (dy > 8 && Math.abs(dy) > Math.abs(e.clientX - s.x)) { s.active = true; sheetEl.current!.classList.add('dragging'); try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* noop */ } }
+      else if (dy < -8) { sd.current = null; return } else return
+    }
+    sheetEl.current!.style.transform = `translateY(${Math.max(0, dy)}px)`
+  }
+  const grabUp = (e: React.PointerEvent) => {
+    const s = sd.current; if (!s || e.pointerId !== s.id) return
+    const dy = e.clientY - s.y, v = dy / Math.max(1, performance.now() - s.t), was = s.active; sd.current = null
+    if (!was) return
+    sheetEl.current!.classList.remove('dragging')
+    if (dy > 110 || v > 0.6) closeSheet(); else sheetEl.current!.style.transform = ''
+  }
+  useEffect(() => {
+    const b = sheetBody.current; if (!b) return
+    let td: null | { y: number; x: number; t: number; top: number; active: boolean } = null
+    const ts = (e: TouchEvent) => { if (!isBottomSheet() || e.touches.length !== 1 || (e.target as HTMLElement).closest('.gallery')) return; td = { y: e.touches[0].clientY, x: e.touches[0].clientX, t: performance.now(), top: b.scrollTop, active: false } }
+    const tm = (e: TouchEvent) => {
+      if (!td) return
+      const t = e.touches[0], dy = t.clientY - td.y
+      if (!td.active) {
+        if (td.top <= 0 && b.scrollTop <= 0 && dy > 8 && Math.abs(dy) > Math.abs(t.clientX - td.x)) { td.active = true; sheetEl.current!.classList.add('dragging') }
+        else if (Math.abs(dy) > 8 || Math.abs(t.clientX - td.x) > 8) { td = null; return } else return
+      }
+      e.preventDefault(); sheetEl.current!.style.transform = `translateY(${Math.max(0, dy)}px)`
+    }
+    const te = (e: TouchEvent) => {
+      if (!td) return; const was = td.active
+      const dy = (e.changedTouches[0]?.clientY ?? td.y) - td.y, v = dy / Math.max(1, performance.now() - td.t); td = null
+      if (!was) return
+      sheetEl.current!.classList.remove('dragging')
+      if (dy > 110 || v > 0.6) closeSheet(); else sheetEl.current!.style.transform = ''
+    }
+    b.addEventListener('touchstart', ts, { passive: true }); b.addEventListener('touchmove', tm, { passive: false })
+    b.addEventListener('touchend', te); b.addEventListener('touchcancel', te)
+    return () => { b.removeEventListener('touchstart', ts); b.removeEventListener('touchmove', tm); b.removeEventListener('touchend', te); b.removeEventListener('touchcancel', te) }
+  }, [sheet])
+  const galStep = (dir: number) => { const g = gallery.current; const f = g?.querySelector('figure') as HTMLElement | null; if (g && f) g.scrollBy({ left: dir * (f.offsetWidth + 10), behavior: reduced ? 'auto' : 'smooth' }) }
+
+  /* ---------- render ---------- */
+  const it = sheet !== null ? ITEMS[sheet] : null
+  const isFinal = index === LAST
+  const inScene = view === 'wardrobe'
+  const loadUpTo = Math.max(1, index + 1)
+
+  return (
+    <div className={`app ${is3D ? 'is3d' : 'is2d'} view-${view} ${view === 'wardrobe' ? 'vault' : ''}`}>
+      {is3D && <Suspense fallback={null}><Experience paused={view === 'grid' || (view === 'tailor' && tailor === 'in')} onReady={() => setGlReady(true)} /></Suspense>}
+      {!is3D && <div className="room2d" aria-hidden="true" />}
+
+      {/* SCREEN 3: THE SECRET WARDROBE (accessible DOM over the 3D room) */}
+      <div className={`scene ${inScene ? '' : 'is-off'}`} inert={!inScene || sheetShown}>
+        <main className="track" ref={track} tabIndex={0} role="region" aria-roledescription="carousel"
+          aria-label="The wardrobe. Use the left and right arrow keys to move between pieces.">
+          {ITEMS.map((p, i) => {
+            const on = i === index
+            return (
+              <section key={i} className="slide" data-i={i} role="group" aria-roledescription="slide" aria-label={`Item ${i + 1} of ${N}: ${p.name}`} aria-hidden={!on}>
+                <div className="stage">
+                  {!is3D && <img className="garment" width={768} height={1024} decoding="async" draggable={false} alt={p.images[0].alt} src={i <= loadUpTo ? p.images[0].src : undefined} />}
+                  {is3D && <span className="sr-only">{p.images[0].alt}</span>}
+                </div>
+                <div className="copy">
+                  <p className="kicker" aria-hidden="true">{pad(i + 1)} <span>/ {pad(N)}</span></p>
+                  <h2 className="name line" style={{ '--i': 0 } as React.CSSProperties}>{p.name}</h2>
+                  <p className="fabric line" style={{ '--i': 1 } as React.CSSProperties}>{p.fabric}</p>
+                  {p.price != null && <p className="price line" style={{ '--i': 2 } as React.CSSProperties}>From {inr.format(p.price)}{SAMPLE_PRICES && <small>sample price</small>}</p>}
+                  <div className="actions line" style={{ '--i': 3 } as React.CSSProperties}>
+                    <a className="btn primary" href={enquire(p)} target="_blank" rel="noopener" tabIndex={on ? 0 : -1}>{WA_ICON}Enquire on WhatsApp</a>
+                    <button className="link details" type="button" tabIndex={on ? 0 : -1} onClick={e => openSheet(i, e.currentTarget)}>View details</button>
+                  </div>
+                </div>
+              </section>
+            )
+          })}
+          <section className="slide final" data-i={LAST} role="group" aria-roledescription="slide" aria-label="The wardrobe is private" aria-hidden={!isFinal}>
+            <div className="stage" aria-hidden="true">{!is3D && <img className="final-logo" src={LOGO} alt="" />}</div>
+            <div className="copy">
+              <h2 className="name line" style={{ '--i': 0 } as React.CSSProperties}>The wardrobe is private.</h2>
+              <p className="fabric line" style={{ '--i': 1 } as React.CSSProperties}>Visit us or book a fitting.</p>
+              <p className="addr line" style={{ '--i': 2 } as React.CSSProperties}>{CONTACT.address}</p>
+              <div className="actions line" style={{ '--i': 3 } as React.CSSProperties}>
+                <a className="btn primary" href={wa('Hello, I would like to visit or book a fitting.')} target="_blank" rel="noopener" tabIndex={isFinal ? 0 : -1}>{WA_ICON}Enquire on WhatsApp</a>
+                <a className="btn ghost" href={`tel:${CONTACT.phone}`} tabIndex={isFinal ? 0 : -1}>{CALL_ICON}Call {CONTACT.phoneLabel}</a>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <button className="nav-arrow prev" id="prev" aria-label="Previous piece" disabled={index <= 0} onClick={() => goTo(indexRef.current - 1)}><Chev d="l" /></button>
+        <button className="nav-arrow next" id="next" aria-label="Next piece" disabled={index >= LAST} onClick={() => goTo(indexRef.current + 1)}><Chev d="r" /></button>
+        <footer className="bottombar" aria-hidden="true">
+          <div className="counter" style={{ opacity: isFinal ? 0 : 1 }}>{isFinal ? '' : <>{pad(Math.max(1, index + 1))} <span>/ {pad(N)}</span></>}</div>
+          <div className="progress"><i style={{ transform: `scaleX(${isFinal ? 1 : Math.max(1, index + 1) / N})` }} /></div>
+          <div className={`hint ${index === 0 ? '' : 'off'}`}>Slide <svg viewBox="0 0 22 10" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M1 5h19M16 1l4 4-4 4" /></svg></div>
+        </footer>
+      </div>
+
+      {view === 'grid' && <Grid key={gridCat} initialCat={gridCat} onOpen={openSheet} onEnter={gridToVault} inert={sheetShown} />}
+      {(view === 'wardrobe' || view === 'grid') && (
+        <header className="topbar" inert={sheetShown}>
+            <button className="home" id="home" aria-label="The Godfather. Return to the gate" onClick={toGate}><img src={LOGO_SMALL} alt="" width={96} height={73} /></button>
+            {view === 'wardrobe' && <button className="back-shop" id="back-shop" type="button" onClick={callTailor}>
+              <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M10 2 2 10l8 8" /></svg>Back to the shop</button>}
+            {view === 'wardrobe' && <p className="vault-label" aria-hidden="true">Private wardrobe · {pad(Math.min(N, Math.max(1, index + 1)))}</p>}
+            <div className="top-right">
+              <button className="sound" id="sound" aria-pressed={sound} onClick={toggleSound}>
+                <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" /><path className="wave" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" /></svg>
+                <span>{sound ? 'Sound on' : 'Sound off'}</span>
+              </button>
+              <button className="ask" id="ask" type="button" aria-label="Ask the tailor" onClick={callTailor}>
+                <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M3 15.5c2.5 1.3 15.5 1.3 18 0" /><path d="M6.2 15.2 7.4 8.6c.3-1.6 2-1.9 3-1.2l1.6 1 1.6-1c1-.7 2.7-.4 3 1.2l1.2 6.6" /><path d="M7 12.6c3 .8 7 .8 10 0" /></svg>
+                <span>Ask the tailor</span>
+              </button>
+              <a className="btn ghost book" id="book" href={BOOK_HREF} target="_blank" rel="noopener">Book a fitting</a>
+            </div>
+          </header>
+      )}
+
+      <div className="sr-only" aria-live="polite" aria-atomic="true" ref={live} id="live" />
+
+      {/* SCREEN 4: PIECE DETAIL */}
+      {it && <div className={`backdrop ${sheetShown ? 'open' : ''}`} onClick={() => closeSheet()} />}
+      {it && (
+        <aside ref={sheetEl} className={`sheet ${sheetShown ? 'open' : ''}`} id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+          <div className="grab" id="grab" onPointerDown={grabDown} onPointerMove={grabMove} onPointerUp={grabUp} onPointerCancel={grabUp}>
+            <span className="handle" aria-hidden="true" />
+            <button className="close" id="close" aria-label="Close details" onClick={() => closeSheet()}>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" /></svg>
+            </button>
+          </div>
+          <div className="sheet-body" ref={sheetBody}>
+            <div className="gallery" id="gallery" ref={gallery} tabIndex={0} aria-label="Photos"
+              onScroll={e => { const g = e.currentTarget, f = g.querySelector('figure') as HTMLElement | null; if (f) setGIdx(Math.round(g.scrollLeft / (f.offsetWidth + 10))) }}
+              onKeyDown={e => { if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); galStep(1) } if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); galStep(-1) } }}>
+              {it.images.map((im, k) => (
+                <figure key={im.src}>
+                  <img src={im.src} alt={im.alt} width={768} height={1024} decoding="async" loading={k > 1 ? 'lazy' : undefined} />
+                  {im.source === 'store photo' && <figcaption>From the store window</figcaption>}
+                </figure>
+              ))}
+            </div>
+            <div className="gal-nav">
+              <div className="dots" aria-hidden="true">{it.images.map((_, k) => <i key={k} className={k === gIdx ? 'on' : ''} />)}</div>
+              <div className="gal-btns">
+                <button aria-label="Previous photo" onClick={() => galStep(-1)}><Chev d="l" /></button>
+                <button aria-label="Next photo" onClick={() => galStep(1)}><Chev d="r" /></button>
+              </div>
+            </div>
+            <h2 id="sheet-title">{it.name}</h2>
+            <p className="tag">{it.tagline}</p>
+            <dl className="specs" id="specs">
+              <dt>Fabric</dt><dd>{it.fabric}</dd>
+              <dt>Fit</dt><dd>{it.details.fit}</dd>
+              <dt>Colours</dt><dd><span className="swatches">{it.colours.map(c => <span className="swatch" key={c.name}><b style={{ background: c.hex }} />{c.name}</span>)}</span></dd>
+              <dt>Made to measure</dt><dd>{it.details.madeToMeasure}</dd>
+              <dt>Delivery</dt><dd>{it.details.delivery}</dd>
+              {it.price != null && <><dt>Price</dt><dd>From {inr.format(it.price)}{SAMPLE_PRICES ? ' (sample)' : ''}</dd></>}
+            </dl>
+            <a className="btn primary" id="sheet-wa" href={enquire(it)} target="_blank" rel="noopener">{WA_ICON}Enquire on WhatsApp</a>
+          </div>
+        </aside>
+      )}
+
+      {/* SCREEN 1 + 2: THE GATE (3D logo behind; this layer holds the accessible tap target) */}
+      {tailor !== 'off' && <Tailor phase={tailor} quick={tailorQuick} reduced={reduced} onChoose={choose} onNav={hostNav} />}
+
+      {(view === 'gate' || view === 'transition') && (
+        <div key={gateKey} className={`gate intro ${view === 'transition' ? 'leaving' : ''} ${is3D && glReady ? 'gl-on' : ''}`} id="gate" inert={view !== 'gate'}>
+          <div className="gate-inner">
+            <button className="crest-btn" id="crest" ref={crest} aria-label="The Godfather Menswear. Touch the crest to enter" onClick={enter}>
+              <span className="half l"><img src={LOGO} alt="" width={1550} height={1180} /></span>
+              <span className="half r"><img src={LOGO} alt="" width={1550} height={1180} /></span>
+            </button>
+            <p className="gate-line" id="gate-line">Touch the crest to enter.</p>
+          </div>
+        </div>
+      )}
+      {view === 'transition' && <button className="skip" id="skip" onClick={finishEnter}>Skip</button>}
+      <div className={`blackout ${fadeBlack ? 'on' : ''}`} aria-hidden="true" />
+      <div className="ring" ref={ring} aria-hidden="true" />
+      {!is3D && <div className="grain" aria-hidden="true" />}
+    </div>
+  )
+}
