@@ -1,7 +1,7 @@
 // Shared mutable state between the DOM layer and the 3D scene (no React re-renders per frame).
 export type View = 'gate' | 'transition' | 'tailor' | 'walk' | 'wardrobe' | 'grid'
 export const TRANSITION_MS = 2500
-export const WALK_MS = 9000    // premium: through the shop, the hidden wardrobe and down the stairs into the vault
+export const WALK_MS = 13000   // premium: Lorenzo leads through the shop, the hidden wardrobe, down the stairs, and unlocks the golden wardrobe
 export const rig = {
   view: 'gate' as View,
   gateAt: performance.now(),

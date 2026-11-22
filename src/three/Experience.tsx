@@ -4,7 +4,7 @@ import { MeshReflectorMaterial, PerformanceMonitor } from '@react-three/drei'
 import { EffectComposer, Bloom, Noise, Vignette, DepthOfField } from '@react-three/postprocessing'
 import { BlendFunction, type DepthOfFieldEffect } from 'postprocessing'
 import * as THREE from 'three'
-import { ITEMS, STORE } from '../data'
+import { ITEMS, STORE, TAILOR } from '../data'
 import { rig, easeInOut, easeOut, clamp01, smooth, WALK_MS, walkTime } from '../rig'
 
 /* ---------------- world constants ---------------- */
@@ -363,7 +363,7 @@ function ScreenFX() {
    all the way, so the stairwell drops straight onto the rail where the wardrobe starts. */
 const SHOP_Y = 5.2, EYE = 1.5, DOOR_Z = 22, WARD_Z = 11.8, STAIR_END = 4.6, STEPS = 12
 const walkFog = { shop: new THREE.Color('#1c0507'), gold: new THREE.Color('#1d1406'), vault: new THREE.Color('#050303') }
-type WalkPath = { curve: THREE.CatmullRomCurve3; total: number; dist: (t: number) => number; key: number }
+type WalkPath = { curve: THREE.CatmullRomCurve3; total: number; dist: (t: number) => number; lead: (t: number) => number; key: number }
 function makeWalk(endY: number): WalkPath {
   const S = SHOP_Y, E = EYE
   const pts = [
@@ -376,9 +376,51 @@ function makeWalk(endY: number): WalkPath {
   const at = (k: number) => L[Math.round((k / (pts.length - 1)) * 400)]
   /* distance along the path over time: ease out of the doorway, walk the aisle, slow while the wardrobe opens,
      step through, take the stairs, glide onto the first anchor */
-  const dist = spline([[0, 0], [1.4, at(1) * 0.75], [3.2, at(3)], [4.15, at(4) + 0.5], [4.9, at(5)], [7.25, at(7)], [WALK_MS / 1000, total]])
-  return { curve, total, dist, key: endY }
+  /* Lorenzo walks a couple of metres ahead; the camera follows at a walking pace, slows at the foot of the stairs,
+     and stops short of the golden wardrobe while he unlocks it, then glides onto the first anchor */
+  const dist = spline([[0, 0], [1.6, at(1) * 0.7], [3.6, at(3)], [4.9, at(4) + 0.4], [5.8, at(5)], [8.6, at(7)], [10.0, total - 1.7], [11.4, total - 1.25], [WALK_MS / 1000, total]])
+  /* how far ahead of the camera he is (along the same path, then on past its end to the wardrobe) */
+  const lead = spline([[0, 1.3], [1.3, 2.2], [2.4, 2.5], [8.6, 2.5], [10.0, 5.3]])
+  return { curve, total, dist, lead, key: endY }
 }
+/* Lorenzo, seen from behind with the cat in his arm: a keyed, generated walk cycle (24 frames, 2 steps) in one atlas,
+   plus a 25th frame raising the key. Frames are picked by distance walked so his feet don't slide, and blended for smoothness.
+   He is lit by the room he is in: crimson in the shop, gold on the stairs, rim-lit by the wardrobe when it opens. */
+const LEAD = { cols: 5, rows: 5, n: 24, key: 24, aspect: 240 / 460, h: 1.86, stride: 1.5 }
+const SPRITE_VS = `varying vec2 vUv;
+#include <fog_pars_vertex>
+void main(){ vUv = uv; vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mvPosition;
+#include <fog_vertex>
+}`
+const SPRITE_FS = `uniform sampler2D map; uniform vec2 uCell, uA, uB; uniform float uMix, uO, uRimI; uniform vec3 uTint, uRim; varying vec2 vUv;
+#include <fog_pars_fragment>
+vec4 at(vec2 o){ return texture2D(map, o + clamp(vUv, 0.003, 0.997) * uCell); }
+float al(vec2 o, vec2 d){ return texture2D(map, o + clamp(vUv + d, 0.003, 0.997) * uCell).a; }
+void main(){
+  vec4 a = at(uA), b = at(uB); vec4 c = mix(a, b, uMix);
+  if (c.a < 0.04) discard;
+  vec2 d = vec2(0.014, 0.007);
+  float e = c.a - min(min(al(uA, vec2(d.x, 0.)), al(uA, vec2(-d.x, 0.))), min(al(uA, vec2(0., d.y)), al(uA, vec2(0., -d.y))));
+  vec3 col = c.rgb * uTint + uRim * uRimI * clamp(e * 1.2, 0.0, 1.0);
+  gl_FragColor = vec4(col, c.a * uO);
+  #include <fog_fragment>
+  #include <colorspace_fragment>
+}`
+function leadMat(onLoad: (t: THREE.Texture) => void) {
+  const tex = new THREE.TextureLoader().load(TAILOR.walk, onLoad)
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter
+  const u = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+    uCell: { value: new THREE.Vector2(1 / LEAD.cols, 1 / LEAD.rows) }, uA: { value: new THREE.Vector2() }, uB: { value: new THREE.Vector2() },
+    uMix: { value: 0 }, uO: { value: 1 }, uRimI: { value: 0 }, uTint: { value: new THREE.Color(1, 1, 1) }, uRim: { value: new THREE.Color(1, 0.7, 0.35) }
+  }])
+  u.map = { value: tex }
+  return new THREE.ShaderMaterial({ uniforms: u, vertexShader: SPRITE_VS, fragmentShader: SPRITE_FS, transparent: true, depthWrite: false, fog: true })
+}
+const cellOff = (i: number, v: THREE.Vector2) => v.set((i % LEAD.cols) / LEAD.cols, 1 - (Math.floor(i / LEAD.cols) + 1) / LEAD.rows)
+/* floor height in the walk's local frame: shop, stair slope, vault */
+const floorAt = (z: number) => z >= WARD_Z ? SHOP_Y : z <= STAIR_END ? 0 : SHOP_Y * (z - STAIR_END) / (WARD_Z - STAIR_END) - SHOP_Y / STEPS * 0.5
+/* the golden wardrobe in the vault: where he stops, when it unlocks and opens */
+const VAULT_DOOR_Z = -8.4, STOP_PAST = 3.55, KEY_AT = 10.15, OPEN_AT = 10.95, OPEN_S = 1.15, INTO_LIGHT = 11.35
 function quad(a: number[], b: number[], c: number[], d: number[], uvRepeat = [1, 1]) {
   const g = new THREE.BufferGeometry()
   g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...d], 3))
@@ -411,8 +453,9 @@ function suitGeo() {
 }
 const SUIT_COLOURS = ['#1d2a44', '#2b2b2e', '#141416', '#4a1420', '#7d5f3c', '#bdb197', '#55565a', '#1e3328', '#3b2a20', '#2a1f3a']
 
-function Walk({ low }: { low: boolean }) {
+function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } }) {
   const g = useRef<THREE.Group>(null)
+  const ready = useRef<((t: THREE.Texture) => void) | null>(null)
   const mats = useMemo(() => {
     const marble = marbleTexture(); marble.repeat.set(2, 3)
     const marbleStair = marbleTexture(); marbleStair.repeat.set(1.2, 0.3)
@@ -444,7 +487,15 @@ function Walk({ low }: { low: boolean }) {
       pool: glowMat(new THREE.Color(1.0, 0.5, 0.3)),
       goldGlow: glowMat(new THREE.Color(1.0, 0.72, 0.32)),
       spill: glowMat(new THREE.Color(1.0, 0.7, 0.3)),
-      cone: coneMat()
+      cone: coneMat(),
+      vaultGold: new THREE.MeshBasicMaterial({ map: brassTexture(), color: new THREE.Color(2.3, 1.75, 0.85) }),
+      seam: new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 2.6, 0.9), toneMapped: false, transparent: true, opacity: 0 }),
+      flood: glowMat(new THREE.Color(1.0, 0.74, 0.34)),
+      glint: glowMat(new THREE.Color(1.0, 0.85, 0.5)),
+      shadow: new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uO: { value: 0.5 } },
+        vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+        fragmentShader: `uniform float uO; varying vec2 vUv; void main(){ float r = length((vUv - 0.5) * 2.0); gl_FragColor = vec4(0.0, 0.0, 0.0, uO * pow(1.0 - smoothstep(0.0, 1.0, r), 1.6)); }` }),
+      lead: leadMat(t => ready.current?.(t))
     }
   }, [])
   const built = useMemo(() => {
@@ -551,7 +602,30 @@ function Walk({ low }: { low: boolean }) {
     add(new THREE.Mesh(quad([-sw, 3.2, STAIR_END], [sw, 3.2, STAIR_END], [sw, 3.2, 0], [-sw, 3.2, 0]), m.dark))
     /* the vault's light spilling up the stairwell */
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.spill); spill.position.set(0, 1.4, -0.6); spill.scale.set(3.2, 3.2, 1); add(spill)
-    return { root, gl, gr, wl, wr, lights, wardGlow, spill }
+    /* the golden wardrobe that closes off the vault: two tall gilded doors, a lock at the seam, light behind them */
+    const VW = 4.3, VH = 5.6, VZ = VAULT_DOOR_Z
+    const flood = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.flood); flood.position.set(0, 1.9, VZ - 0.5); flood.scale.set(11, 7.5, 1); add(flood)
+    const mkVault = (side: number) => {
+      const hinge = new THREE.Group(); hinge.position.set(-side * VW, 0, VZ)
+      const d = new THREE.Mesh(new THREE.BoxGeometry(VW, VH, 0.12), m.vaultGold); d.position.set(side * VW / 2, VH / 2, 0); hinge.add(d)
+      for (const [py, ph] of [[1.55, 2.3], [4.05, 2.1]]) {
+        const fr = new THREE.Mesh(new THREE.PlaneGeometry(VW - 0.7, ph), m.goldDim); fr.position.set(side * VW / 2, py, 0.062); hinge.add(fr)
+        const inn = new THREE.Mesh(new THREE.PlaneGeometry(VW - 0.84, ph - 0.14), m.vaultGold); inn.position.set(side * VW / 2, py, 0.064); hinge.add(inn)
+      }
+      const h = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.06), m.gold); h.position.set(side * 0.16, 1.45, 0.09); hinge.add(h)
+      add(hinge); return hinge
+    }
+    const vl = mkVault(1), vr = mkVault(-1)
+    box(VW * 2 + 0.5, 0.36, 0.3, 0, VH + 0.18, VZ, m.door); box(VW * 2 + 0.6, 0.03, 0.04, 0, VH + 0.02, VZ + 0.16, m.goldDim)
+    for (const sx of [-1, 1]) box(0.3, VH + 0.36, 0.3, sx * (VW + 0.15), (VH + 0.36) / 2, VZ, m.door)
+    const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.035, VH - 0.1), m.seam); seam.position.set(0, VH / 2, VZ + 0.07); add(seam)
+    const lock = box(0.16, 0.22, 0.05, 0, 1.45, VZ + 0.09, m.gold)
+    const glint = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.glint); glint.position.set(0, 1.45, VZ + 0.2); glint.scale.set(0.7, 0.7, 1); add(glint)
+    /* Lorenzo + a soft contact shadow */
+    const geo = new THREE.PlaneGeometry(LEAD.h * LEAD.aspect, LEAD.h); geo.translate(0, LEAD.h / 2, 0)
+    const lead = new THREE.Mesh(geo, m.lead); lead.renderOrder = 5; lead.frustumCulled = false; add(lead)
+    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.5), m.shadow); shadow.rotation.x = -Math.PI / 2; add(shadow)
+    return { root, gl, gr, wl, wr, lights, wardGlow, spill, vl, vr, flood, seam, lock, glint, lead, shadow }
   }, [mats])
   useFrame(({ camera }) => {
     const t = walkTime()
@@ -561,9 +635,10 @@ function Walk({ low }: { low: boolean }) {
     const w = world()
     g.current!.position.set(camXAt(0, w), w.floorY, 0)
     const b = built
-    const gOpen = easeInOut(clamp01((t - 0.05) / 1.1)) * 1.45
+    const gOpen = easeInOut(clamp01(t / 0.95)) * 1.45
     b.gl.rotation.y = gOpen; b.gr.rotation.y = -gOpen
-    const wOpen = easeInOut(clamp01((t - 3.0) / 1.25))
+    /* the hidden wardrobe swings open as he reaches it */
+    const wOpen = easeInOut(clamp01((t - 2.4) / 1.2))
     b.wl.rotation.y = -wOpen * 1.75; b.wr.rotation.y = wOpen * 1.75
     /* glows fade as the camera reaches them, so we never fly through a sheet of light */
     const cz = camera.position.z
@@ -574,10 +649,58 @@ function Walk({ low }: { low: boolean }) {
     mats.warmGlow.uniforms.uI.value = 0.4 + 0.04 * Math.sin(t * 7.0)
     mats.pool.uniforms.uI.value = 0.12
     mats.cone.uniforms.uI.value = 0.55
+    /* the golden wardrobe: a key, a click of light at the lock, light through the seam, the doors open, gold floods out */
+    const vOpen = easeInOut(clamp01((t - OPEN_AT) / OPEN_S))
+    /* they swing inward, away from him, into the vault */
+    b.vl.rotation.y = vOpen * 1.6; b.vr.rotation.y = -vOpen * 1.6
+    const turn = smooth(KEY_AT + 0.35, KEY_AT + 0.6, t) * (1 - smooth(KEY_AT + 0.75, OPEN_AT + 0.2, t))
+    mats.glint.uniforms.uI.value = 0.9 * turn; b.glint.visible = turn > 0.002
+    mats.seam.opacity = smooth(KEY_AT + 0.45, OPEN_AT, t) * (1 - vOpen); b.seam.visible = mats.seam.opacity > 0.01
+    const flood = smooth(OPEN_AT - 0.1, OPEN_AT + 0.55, t) * (1 - 0.7 * smooth(OPEN_AT + 0.7, WALK_MS / 1000, t))
+    mats.flood.uniforms.uI.value = 0.55 * flood; b.flood.visible = flood > 0.002
+    leader(t, camera)
     void low
   })
+  /* where Lorenzo is and which frame he shows */
+  const lv = useMemo(() => ({ p: new THREE.Vector3(), c: new THREE.Vector3(), e: new THREE.Vector3(), tint: new THREE.Color(), shop: new THREE.Color(0.78, 0.5, 0.5), stair: new THREE.Color(0.85, 0.7, 0.52), vault: new THREE.Color(0.5, 0.42, 0.34), gold: new THREE.Color(1.0, 0.72, 0.36) }), [])
+  const leader = (t: number, camera: THREE.Camera) => {
+    const P = path.current, b = built, m = mats.lead.uniforms
+    if (!P) { b.lead.visible = false; b.shadow.visible = false; return }
+    const stop = P.total + STOP_PAST
+    /* after the doors open he walks on into the light */
+    const on = smooth(INTO_LIGHT, WALK_MS / 1000 - 0.3, t)
+    let s = Math.min(P.dist(t) + P.lead(t), stop) + on * 1.7
+    if (s <= P.total) P.curve.getPointAt(clamp01(s / P.total), lv.p)
+    else { P.curve.getPointAt(1, lv.p); lv.p.z -= s - P.total }
+    /* step aside to the left of the seam to work the lock */
+    const aside = smooth(P.total + 0.8, stop, s) * (1 - on)
+    const x = lv.p.x - 0.34 * aside, z = lv.p.z, y = floorAt(z)
+    b.lead.position.set(x, y, z); b.shadow.position.set(x + 0.05, y + 0.012, z + 0.06)
+    /* face the camera (around y only) */
+    lv.c.copy(camera.position).sub(g.current!.position)
+    b.lead.rotation.y = Math.atan2(lv.c.x - x, lv.c.z - z)
+    /* frames by distance walked; the key frame while he stands at the lock */
+    const ph = (s / LEAD.stride) * LEAD.n, f0 = Math.floor(ph), fr = ph - f0
+    const keyed = smooth(stop - 0.25, stop, Math.min(P.dist(t) + P.lead(t), stop)) * (1 - smooth(INTO_LIGHT - 0.15, INTO_LIGHT + 0.2, t))
+    cellOff(((f0 % LEAD.n) + LEAD.n) % LEAD.n, m.uA.value)
+    if (keyed > 0.001) { cellOff(LEAD.key, m.uB.value); m.uMix.value = keyed }
+    else { cellOff((((f0 + 1) % LEAD.n) + LEAD.n) % LEAD.n, m.uB.value); m.uMix.value = fr }
+    /* matched lighting: crimson shop, warm stairwell, near-silhouette in the vault, gold rim when the wardrobe opens */
+    const stair = smooth(WARD_Z + 0.5, WARD_Z - 2.5, z), vault = smooth(STAIR_END + 1, STAIR_END - 2, z)
+    lv.tint.copy(lv.shop).lerp(lv.stair, stair).lerp(lv.vault, vault)
+    m.uTint.value.copy(lv.tint)
+    const open = smooth(OPEN_AT - 0.1, OPEN_AT + 0.6, t)
+    m.uRimI.value = 0.22 + 0.2 * stair + 0.85 * open + 0.3 * mats.seam.opacity
+    m.uRim.value.setRGB(1.0, 0.3, 0.28).lerp(lv.gold, Math.max(stair, open))
+    /* fade in from the doorway (never pops in front of the lens), out into the light at the end */
+    const near = smooth(0.7, 1.3, lv.c.set(x, y + 1.5, z).distanceTo(lv.e.copy(camera.position).sub(g.current!.position)))
+    m.uO.value = near * (1 - smooth(INTO_LIGHT + 0.35, WALK_MS / 1000 - 0.35, t))
+    b.lead.visible = m.uO.value > 0.01
+    mats.shadow.uniforms.uO.value = 0.55 * m.uO.value * (1 - open * 0.5); b.shadow.visible = b.lead.visible
+  }
   /* compile every shader up front (entry, walk, vault), so no scene hitches the first time it appears */
   const { gl, scene, camera } = useThree()
+  useEffect(() => { ready.current = t => { try { gl.initTexture(t) } catch { /* uploaded on first use */ } }; const t = mats.lead.uniforms.map.value as THREE.Texture; if (t.image) ready.current(t) }, [gl, mats])
   useEffect(() => {
     const id = window.setTimeout(() => {
       const grp = g.current; if (!grp) return
@@ -830,7 +953,7 @@ export default function Experience({ onFail, paused = false }: { onFail: (why: s
       <Atmosphere path={path} />
       <Room low={low} res={T_.reflect} />
       {ITEMS.map((_, i) => <Piece key={i} i={i} />)}
-      <Walk low={low} />
+      <Walk low={low} path={path} />
       <Dust />
       <Storefront />
       <Gate />

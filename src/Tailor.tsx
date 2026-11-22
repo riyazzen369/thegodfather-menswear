@@ -78,7 +78,15 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
       </div>
       <div className="sf-shade" aria-hidden="true" />
 
-      <div className="sf-host" aria-hidden="true"><img src={TAILOR.host} alt="" width={552} height={1094} decoding="async" /></div>
+      {/* Lorenzo: cigar ember + smoke and the cat's blink are their own small layers over the photo */}
+      <div className="sf-host" aria-hidden="true">
+        <div className="host-fig">
+          <img src={TAILOR.host} srcSet={TAILOR.hostSet} sizes="(max-width:959px) 260px, 460px" alt="" width={654} height={1248} decoding="async" />
+          <i className="cat-lid l" /><i className="cat-lid r" />
+          <i className="cig-ember" />
+          {!reduced && <span className="cig-smoke">{[0, 1, 2, 3, 4].map(k => <i key={k} style={{ '--k': k } as React.CSSProperties} />)}</span>}
+        </div>
+      </div>
       {!reduced && <Rain layer="front" floor={1} />}
 
       <header className="sf-nav">

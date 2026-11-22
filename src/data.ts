@@ -127,5 +127,7 @@ export function greeting(d = new Date()) {
 }
 export const TAILOR = {
   host: `${base}tailor/lorenzo.webp`,
+  hostSet: `${base}tailor/lorenzo-436.webp 436w, ${base}tailor/lorenzo.webp 654w`,
+  walk: `${base}walk/lorenzo-walk.webp`,
   curtain: `${base}tailor/curtain-tall.webp`
 }
