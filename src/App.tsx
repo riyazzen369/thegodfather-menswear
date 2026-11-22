@@ -8,6 +8,20 @@ import { rig, TRANSITION_MS, WALK_MS } from './rig'
 const Experience = lazy(() => import('./three/Experience'))
 
 const N = ITEMS.length, LAST = N
+/* ?debug=fps: a small overlay with frame rate, quality level, pixel ratio and the GPU watchdog (for tuning on real GPUs) */
+const DEBUG_FPS = new URLSearchParams(location.search).get('debug') === 'fps'
+function FpsOverlay({ mode }: { mode: string }) {
+  const [t, setT] = useState('')
+  useEffect(() => {
+    let f = 0, last = performance.now(), raf = 0, min = 999
+    const loop = () => { f++; const n = performance.now(); if (n - last >= 1000) { const fps = Math.round(f * 1000 / (n - last)); min = Math.min(min, fps); f = 0; last = n
+      const g = (window as any).__glHealth
+      setT(`${fps} fps (min ${min}) · ${mode} · q ${mode === '3d' ? rig.quality + (rig.low ? ' (low)' : '') : '-'} · dpr ${rig.dpr} · ${rig.view}${g ? ' · gl ' + g.max : ''}`) }
+      raf = requestAnimationFrame(loop) }
+    raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf)
+  }, [mode])
+  return <div className="fps-debug" aria-hidden="true">{t}</div>
+}
 /* rendered width of a wardrobe piece: 3:4 inside the stage (46% of the slide on desktop) */
 const GARMENT_SIZES = '(min-width:960px) min(34vw, calc(75vh - 170px)), min(66vw, calc(56vh - 100px))'
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -625,6 +639,7 @@ export default function App() {
       {view === 'walk' && <button className="skip walk-skip" id="walk-skip" onClick={skipWalk}>Skip</button>}
       <div className={`blackout ${fadeBlack ? 'on' : ''}`} aria-hidden="true" />
       <div className="ring" ref={ring} aria-hidden="true" />
+      {DEBUG_FPS && <FpsOverlay mode={mode} />}
       {!is3D && <div className="grain" aria-hidden="true" />}
     </div>
   )

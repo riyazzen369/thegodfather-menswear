@@ -17,6 +17,8 @@ export const rig = {
   layout: { W: 1, H: 1, sx: 0.5, sy: 0.35, sw: 0.8, sh: 0.5, slideW: 1, v: 0 },
   fps: 0,
   low: false,
+  quality: 'auto-high' as string,
+  dpr: 1,
   snap: false,
   descentAt: 0,          // when the camera started descending into the vault
   walkAt: 0,             // when the premium walk-in started (0 = not walking)

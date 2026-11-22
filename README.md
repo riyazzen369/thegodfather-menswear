@@ -97,6 +97,8 @@ Use a static server for dist/. Opening `index.html` straight from disk (file://)
 - `?wfreeze=4.2`: hold the premium walk at 4.2s
 - `?force3d`: never fall back to 2D for low frame rate (software GL in tests)
 - `?hq`: never drop to the low-quality mode
+- `?q=low|med|high`: force a quality level (low: pixel ratio 1, plain floor, no depth of field; med: pixel ratio up to 1.25, half-resolution reflections, no depth of field; high: pixel ratio up to 1.75, full reflections and depth of field). Without it the site starts high and drops to low if the frame rate declines.
+- `?debug=fps`: an overlay with fps (and the minimum), the mode, quality level, pixel ratio, view and the watchdog reading. Combine them, for example `?debug=fps&q=med`.
 - `window.__glHealth`: the GPU watchdog's last reading
 - `window.__rig`: shared state
 - `window.__fps`: frame rate

@@ -39,7 +39,12 @@ function spline(ks: [number, number][]) {
 const PHOTO_Z = 1.2, CURTAIN_Z = 2.6
 const DESCENT_MS = 2400
 const QS = new URLSearchParams(location.search)
-const HQ = QS.has('hq')            // debug: never drop quality
+const HQ = QS.has('hq') || QS.get('q') != null            // debug: never drop quality
+/* ?q=low|med|high forces a quality level (otherwise auto: start high, drop to low if the frame rate declines)
+   low:  dpr 1, plain marble floor, no depth of field
+   med:  dpr up to 1.25, reflective floor at reduced resolution, no depth of field
+   high: dpr up to 1.75, full reflections, depth of field */
+const Q = (['low', 'med', 'high'] as const).find(q => q === QS.get('q')) ?? null
 const FORCE3D = QS.has('force3d')  // debug: never fall back to 2D for slowness
 const dolly = spline([[0.3, GATE_CAM], [1.25, 6.2], [1.95, 3.6], [2.5, PZ + D]])
 const T = () => rig.view === 'gate' ? 0 : rig.view === 'transition' ? (rig.freeze ?? (now() - rig.transStart) / 1000) : 99
@@ -628,7 +633,7 @@ function Room({ low }: { low: boolean }) {
     cR.scale.set(4, ch, 1); cR.position.set(camXAt(LAST, w) + w.visW * 0.5 + 2.6, w.floorY + ch / 2, PZ - 0.3)
     endL.uniforms.uT.value = endR.uniforms.uT.value = now() / 1000
   })
-  const res = low ? 128 : size.width < 700 ? 256 : 512
+  const res = low ? 128 : Q === 'med' || size.width < 700 ? 256 : 512
   return (
     <group ref={g}>
       <mesh material={wallMat}><planeGeometry /></mesh>
@@ -797,10 +802,13 @@ function Focus({ fx }: { fx: { current: DepthOfFieldEffect | null } }) {
 }
 
 export default function Experience({ onFail, paused = false }: { onFail: (why: string) => void; paused?: boolean }) {
-  const [low, setLow] = useState(false)
+  const [low, setLow] = useState(Q === 'low')
+  rig.low = low; rig.quality = Q ?? (low ? 'low' : 'auto-high')
   const path = useRef<WalkPath | null>(null)
   const dof = useRef<DepthOfFieldEffect | null>(null)
-  const [dpr, setDpr] = useState(Math.min(1.75, window.devicePixelRatio || 1))
+  const [dpr, setDpr] = useState(Math.min(Q === 'low' ? 1 : Q === 'med' ? 1.25 : 1.75, window.devicePixelRatio || 1))
+  rig.dpr = dpr
+  const dofOn = !low && Q !== 'med'
   return (
     <Canvas className="gl" dpr={dpr} frameloop={paused ? 'demand' : 'always'} gl={{ antialias: false, alpha: false, powerPreference: 'high-performance', stencil: false }}
       camera={{ fov: FOV, near: 0.1, far: 80, position: [0, 0, GATE_CAM] }}
@@ -820,9 +828,9 @@ export default function Experience({ onFail, paused = false }: { onFail: (why: s
       <Stats />
       <Health onFail={onFail} />
       <DomSync />
-      {!low && <Focus fx={dof} />}
+      {dofOn && <Focus fx={dof} />}
       <EffectComposer multisampling={0} enableNormalPass={false}>
-        {!low ? <DepthOfField ref={dof} focusDistance={D} focusRange={3} bokehScale={0} resolutionScale={0.5} /> : <></>}
+        {dofOn ? <DepthOfField ref={dof} focusDistance={D} focusRange={3} bokehScale={0} resolutionScale={0.5} /> : <></>}
         <Bloom mipmapBlur intensity={low ? 0.8 : 1.15} luminanceThreshold={0.95} luminanceSmoothing={0.2} radius={0.75} />
         <Noise premultiply blendFunction={BlendFunction.SCREEN} opacity={0.22} />
         <Vignette offset={0.28} darkness={0.82} />
