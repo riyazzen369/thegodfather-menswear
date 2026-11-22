@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { CHOICES, HOST, STORE, TAILOR, greeting, LOGO_SMALL, type Choice } from './data'
+import { CHOICES, HOST, STORE, TAILOR, greeting, type Choice } from './data'
 import Rain from './Rain'
+import { Mark } from './Pic'
 
 /* The storefront: the rainy shop at night, and Lorenzo, your host.
    phase 'in'   lights flicker on, the camera eases in, Lorenzo rises into frame and the line types out
@@ -10,7 +11,7 @@ import Rain from './Rain'
    quick = repeat visit / called back from the top bar: same scene, shorter build-up. */
 type Nav = 'collections' | 'tailoring' | 'visit' | 'private'
 export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
-  phase: 'in' | 'out' | 'lead'
+  phase: 'in' | 'out' | 'lead' | 'walk'
   quick: boolean
   reduced: boolean
   onChoose: (c: Choice) => void
@@ -62,7 +63,7 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
   const words = line.slice(0, typed)
   const store = STORE(Math.max(innerWidth, innerHeight * 16 / 9) * Math.min(2, devicePixelRatio || 1))
   return (
-    <section ref={root} className={`tailor sf ${quick ? 'quick' : ''} ${phase === 'out' ? 'closing' : ''} ${phase === 'lead' ? 'leading' : ''} ${done ? 'typed' : ''}`}
+    <section ref={root} className={`tailor sf ${quick ? 'quick' : ''} ${phase === 'out' ? 'closing' : ''} ${phase === 'lead' ? 'leading' : ''} ${phase === 'walk' ? 'walking' : ''} ${done ? 'typed' : ''}`}
       id="tailor" aria-labelledby="host-line" aria-busy={phase !== 'in'}
       style={{ '--t-host': T.host + 's', '--t-panel': T.panel + 's' } as React.CSSProperties}>
       <div className="sf-cam" aria-hidden="true">
@@ -81,7 +82,7 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
       {!reduced && <Rain layer="front" floor={1} />}
 
       <header className="sf-nav">
-        <img className="sf-logo" src={LOGO_SMALL} alt="The Godfather" width={96} height={73} />
+        <span className="sf-logo" role="img" aria-label="The Godfather"><Mark sizes="(min-width:960px) 78px, 64px" /></span>
         <nav aria-label="Main">
           <button type="button" id="nav-collections" onClick={() => onNav('collections')}>Collections</button>
           <button type="button" id="nav-tailoring" onClick={() => onNav('tailoring')}>Tailoring</button>

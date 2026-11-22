@@ -1,6 +1,7 @@
 // Shared mutable state between the DOM layer and the 3D scene (no React re-renders per frame).
-export type View = 'gate' | 'transition' | 'tailor' | 'wardrobe' | 'grid'
+export type View = 'gate' | 'transition' | 'tailor' | 'walk' | 'wardrobe' | 'grid'
 export const TRANSITION_MS = 2500
+export const WALK_MS = 9000    // premium: through the shop, the hidden wardrobe and down the stairs into the vault
 export const rig = {
   view: 'gate' as View,
   gateAt: performance.now(),
@@ -17,8 +18,11 @@ export const rig = {
   fps: 0,
   low: false,
   snap: false,
-  descentAt: 0,          // when the camera started descending into the vault           // jump the camera to the rail position next frame (set while hidden)
+  descentAt: 0,          // when the camera started descending into the vault
+  walkAt: 0,             // when the premium walk-in started (0 = not walking)
   /* debug: ?freeze=1.3 holds the transition at that second (for screenshots) */
+  /* debug: ?wfreeze=4.2 holds the premium walk at that second */
+  walkFreeze: (() => { const f = new URLSearchParams(location.search).get('wfreeze'); return f ? +f : null })() as number | null,
   freeze: (() => { const f = new URLSearchParams(location.search).get('freeze'); return f ? +f : null })() as number | null
 }
 ;(window as any).__rig = rig
@@ -26,3 +30,6 @@ export const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(
 export const easeOut = (t: number) => 1 - Math.pow(1 - t, 3)
 export const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
 export const smooth = (a: number, b: number, t: number) => { const x = clamp01((t - a) / (b - a)); return x * x * (3 - 2 * x) }
+
+/* seconds into the premium walk, or -1 when not walking */
+export const walkTime = () => rig.walkAt ? (rig.walkFreeze ?? (performance.now() - rig.walkAt) / 1000) : -1

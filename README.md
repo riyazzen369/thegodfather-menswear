@@ -18,8 +18,8 @@ Use a static server for dist/. Opening `index.html` straight from disk (file://)
 
 ## Flow
 
-1. **Gate.** Only the red neon logo; touch it to enter. It breathes, follows the pointer or gyro, and a red ring follows the cursor.
-2. **Entry (2.5s, with Skip).** The logo splits into hinged 3D doors, red light floods in, and the camera dollies through the store photo as red curtains part.
+1. **Gate.** Only the red logo, touch it to enter. The logo is plain HTML in `index.html`, so it paints before any script loads and never depends on WebGL. It fades in at 0.3–0.8s with a breathing red halo and film grain behind it; the prompt follows at about 1.1s. A red ring follows the cursor.
+2. **Entry (2.5s, with Skip).** The logo splits into two hinged doors (CSS 3D), red light floods in behind them, and the camera dollies through the store photo as red curtains part.
 3. **Storefront and Lorenzo.** The rainy night storefront fills the screen.
    - The interior lights flicker on, the neon sign glows and hums, rain falls in front and behind, drops splash on the wet floor, and the camera slowly dollies in with depth parallax.
    - Copy: "Night boutique · Bespoke tailoring", then "Dressed for the family business."
@@ -28,12 +28,21 @@ Use a static server for dist/. Opening `index.html` straight from disk (file://)
    - Two buttons: The Godfather Attire Tour (dark) and The Godfather Premium Wardrobe (red).
    - Skip or Esc shows the full line and the buttons at once.
    - The top nav (Collections, Tailoring, Visit, Private wardrobe) shows on desktop.
-4. **Premium Wardrobe.** The camera rushes through the glass doors with motion blur, past red and black wooden slats, into a private room with velvet curtains. The wardrobe doors slide open on gold light, and the camera descends into the **golden vault**:
+4. **Premium Wardrobe.** One continuous first-person walk of 9s, with Skip and Esc:
+   - The storefront rushes into the glass doors and hands over to the 3D camera inside the shop.
+   - The camera walks a red runner between racks of suits under spotlights, glancing at the racks with a light head-bob.
+   - The hidden wardrobe at the end of the shop opens on gold light, and the camera steps through and down a brass stairwell with lit steps.
+   - It glides out onto the first anchor in the **golden vault**, and the first piece lights up on its plinth.
+   - The camera follows one CatmullRom spline eased over time, with a wider lens while walking and depth of field (desktop). Fog and light shift from crimson to gold.
+   - The vault pictures are fetched during the walk.
+
+   In the vault:
    - brass panels, dark marble with reflections, red velvet accents
    - each piece on its own lit plinth inside a gold arch
    - the camera glides from piece to piece (swipe, drag, wheel, arrows, Home and End)
-   - the piece in focus is lit, turns slowly and comes forward, while its neighbours sit back and dim
+   - the piece in focus is lit, sways slowly and tilts with the pointer, while its neighbours sit back and dim
    - counter, Enquire on WhatsApp, View details, and the private visit panel at the end
+   - The product pictures are HTML `<picture>` elements kept on their 3D anchors every frame, not WebGL textures. They are AVIF/WebP at 512w and 864w, with a 12×16 blurred placeholder that crossfades to the photo; the piece in focus and its two neighbours are loaded.
 5. **Attire Tour.** A grid of all pieces: 2 columns at 390px, 3 from 760px, 4 from 1100px.
    - Filter chips: All, Suits and formal, Shirts, Wedding, Statement pieces.
    - A card opens the same detail sheet.
@@ -41,6 +50,7 @@ Use a static server for dist/. Opening `index.html` straight from disk (file://)
 6. **Top bar:** the logo goes back to the gate, Ask the tailor goes back to Lorenzo, and Book a fitting is always there. On desktop the vault also shows "Back to the shop" and "Private wardrobe · 01".
 7. **Repeat visits** in the same session skip the gate and entry and land on Lorenzo, with a shorter build-up.
 8. **Reduced motion, or no WebGL:** a 2D version with plain fades and the same flow.
+9. **GPU watchdog:** if the WebGL context is lost, the vault renders black, or the frame rate stays under 8 fps, the site switches to the 2D room mid-visit. The pictures stay where they are.
 
 ## Replace before going live (`src/data.ts`)
 
@@ -55,7 +65,8 @@ Use a static server for dist/. Opening `index.html` straight from disk (file://)
 - **Store photo:** the storefront hero and the entry. Crops from it are used for the suit, velvet blazer and animal-print shirts (`-4`).
 - **Generated, per piece:** a hero (`-1`) and a detail close-up (`-2`) for all 12 pieces. `-3` is a tighter crop of the hero.
 - **Generated, other:** Lorenzo (`public/tailor/lorenzo.webp`) and the velvet curtain.
-- **Built in code:** the vault, the doors, the rain, the slats and the wardrobe.
+- **Built in code:** the vault, the shop interior, racks, stairwell, the doors, the rain, the slats and the wardrobe.
+- **Responsive copies:** `public/img/r/` (AVIF + WebP, 512w and full) and `src/lqip.ts` (placeholders) are generated by `python3 scripts/imgs.py` (needs Pillow with AVIF); logo sizes `public/brand/logo-160/240/320/800.webp` too. Re-run it after replacing photos.
 
 ## Domain and SEO
 
@@ -83,5 +94,9 @@ Use a static server for dist/. Opening `index.html` straight from disk (file://)
 
 - `?2d`: force the 2D version
 - `?freeze=1.3`: hold the entry at 1.3s
+- `?wfreeze=4.2`: hold the premium walk at 4.2s
+- `?force3d`: never fall back to 2D for low frame rate (software GL in tests)
+- `?hq`: never drop to the low-quality mode
+- `window.__glHealth`: the GPU watchdog's last reading
 - `window.__rig`: shared state
 - `window.__fps`: frame rate

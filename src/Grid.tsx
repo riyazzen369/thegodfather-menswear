@@ -1,3 +1,4 @@
+import Pic from './Pic'
 import { useState } from 'react'
 import { CATEGORIES, ITEMS, SAMPLE_PRICES } from './data'
 
@@ -28,7 +29,7 @@ export default function Grid({ onOpen, onEnter, inert, initialCat = 'all' }: {
           <li key={i}>
             <button type="button" className="card" data-i={i} onClick={e => onOpen(i, e.currentTarget)}
               aria-label={`${it.name}${it.price != null ? `, from ${inr.format(it.price)}` : ''}. View details`}>
-              <span className="card-img"><img src={it.images[0].src} alt="" width={768} height={1024} loading="lazy" decoding="async" /></span>
+              <Pic className="card-img" src={it.images[0].src} alt="" lazy sizes="(min-width:1100px) 290px, (min-width:760px) 31vw, 47vw" />
               <span className="card-name">{it.name}</span>
               {it.price != null && <span className="card-price">From {inr.format(it.price)}{SAMPLE_PRICES && <small> sample</small>}</span>}
             </button>

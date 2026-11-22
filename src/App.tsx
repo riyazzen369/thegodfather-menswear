@@ -1,12 +1,15 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { CONTACT, ITEMS, SAMPLE_PRICES, LOGO, LOGO_SMALL, STORE, TAILOR, type Item, type Choice } from './data'
+import { CONTACT, ITEMS, SAMPLE_PRICES, STORE, TAILOR, type Item, type Choice } from './data'
+import Pic, { Mark, preloadPic } from './Pic'
 import Tailor from './Tailor'
 import Grid from './Grid'
-import { rig, TRANSITION_MS } from './rig'
+import { rig, TRANSITION_MS, WALK_MS } from './rig'
 
 const Experience = lazy(() => import('./three/Experience'))
 
 const N = ITEMS.length, LAST = N
+/* rendered width of a wardrobe piece: 3:4 inside the stage (46% of the slide on desktop) */
+const GARMENT_SIZES = '(min-width:960px) min(34vw, calc(75vh - 170px)), min(66vw, calc(56vh - 100px))'
 const pad = (n: number) => String(n).padStart(2, '0')
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 const wa = (text: string) => `https://wa.me/${CONTACT.whatsapp}?text=${encodeURIComponent(text)}`
@@ -26,10 +29,10 @@ const Chev = ({ d }: { d: 'l' | 'r' }) => <svg viewBox="0 0 24 24" fill="none" s
 
 export default function App() {
   const reduced = useRef(matchMedia('(prefers-reduced-motion: reduce)').matches).current
-  const [mode] = useState<'3d' | '2d'>(() => (!reduced && webglOK() && !new URLSearchParams(location.search).has('2d')) ? '3d' : '2d')
+  const [mode, setMode] = useState<'3d' | '2d'>(() => (!reduced && webglOK() && !new URLSearchParams(location.search).has('2d')) ? '3d' : '2d')
   const is3D = mode === '3d'
-  const [glReady, setGlReady] = useState(false)
-  const [view, setViewState] = useState<'gate' | 'transition' | 'tailor' | 'wardrobe' | 'grid'>(() => store.get('gf-entered') ? 'tailor' : 'gate')
+  const [arrive, setArrive] = useState(false)
+  const [view, setViewState] = useState<'gate' | 'transition' | 'tailor' | 'walk' | 'wardrobe' | 'grid'>(() => store.get('gf-entered') ? 'tailor' : 'gate')
   const viewRef = useRef(view)
   const setView = (v: typeof view) => { viewRef.current = v; rig.view = v; setViewState(v) }
   const [index, setIndexState] = useState(-1)
@@ -40,7 +43,7 @@ export default function App() {
   const [sound, setSound] = useState(false)
   const [gateKey, setGateKey] = useState(0)
   const [fadeBlack, setFadeBlack] = useState(false)
-  type Phase = 'off' | 'in' | 'out' | 'lead'
+  type Phase = 'off' | 'in' | 'out' | 'lead' | 'walk'
   const [tailor, setTailor] = useState<Phase>(() => store.get('gf-entered') ? 'in' : 'off')
   const tailorRef = useRef<Phase>(tailor)
   const setTailorPhase = (p: Phase) => { tailorRef.current = p; setTailor(p) }
@@ -64,6 +67,8 @@ export default function App() {
     rig.layout = { W: innerWidth, H: innerHeight, sx: r.left - sr.left + r.width / 2, sy: r.top + r.height / 2, sw: r.width, sh: r.height, slideW: s.offsetWidth, v: rig.layout.v + 1 }
   }, [])
   useLayoutEffect(() => { measure() })
+  /* the on-screen width of a wardrobe piece (CSS px), for picking image sizes ahead of time */
+  const garmentW = () => { const L = rig.layout; return Math.min(L.sh, L.sw * 4 / 3) * 0.75 || 400 }
 
   /* ---------- carousel ---------- */
   const setActive = useCallback((i: number, dir = 1, force = false) => {
@@ -195,7 +200,10 @@ export default function App() {
     const pm = (e: PointerEvent) => {
       if (e.pointerType === 'mouse' && ring.current) ring.current.style.transform = `translate3d(${e.clientX}px,${e.clientY}px,0)`
       rig.pointer.x = (e.clientX / innerWidth) * 2 - 1; rig.pointer.y = -((e.clientY / innerHeight) * 2 - 1)
+      if (viewRef.current === 'wardrobe') tilt()
     }
+    let tiltQ = 0
+    const tilt = () => { if (tiltQ) return; tiltQ = requestAnimationFrame(() => { tiltQ = 0; const t = track.current; if (t) { t.style.setProperty('--px', rig.pointer.x.toFixed(3)); t.style.setProperty('--py', rig.pointer.y.toFixed(3)) } }) }
     const ori = (e: DeviceOrientationEvent) => {
       if (e.gamma == null || e.beta == null) return
       rig.pointer.x = Math.max(-1, Math.min(1, e.gamma / 25)); rig.pointer.y = Math.max(-1, Math.min(1, (45 - e.beta) / 25))
@@ -233,11 +241,51 @@ export default function App() {
     setGridCat(cat); setView('grid')
     requestAnimationFrame(() => { const g = document.getElementById('grid'); if (g) g.scrollTop = 0; document.getElementById('grid-title')?.focus({ preventScroll: true }) })
   }, [])
+  /* premium walk-in (3D): the camera follows one spline; the wardrobe takes over as it settles on the first anchor */
+  const walkTimers = useRef<number[]>([])
+  const arriveT = useRef(0)
+  const landed = useCallback(() => {
+    walkTimers.current.forEach(clearTimeout); walkTimers.current = []
+    openVault(0, false)
+    setArrive(true); clearTimeout(arriveT.current); arriveT.current = window.setTimeout(() => setArrive(false), 1500)
+  }, [openVault])
+  const startWalk = useCallback(() => {
+    walkTimers.current.forEach(clearTimeout); walkTimers.current = []
+    const t = track.current!
+    t.scrollTo({ left: 0, behavior: 'auto' }); rig.scrollP = 0
+    indexRef.current = -1; rig.index = -1
+    slides().forEach(s => s.classList.remove('is-active'))
+    rig.descentAt = 0; rig.walkAt = performance.now()
+    setView('walk')
+    /* the vault is fetched while we walk: first pieces at the size they will be shown */
+    const w = garmentW()
+    ITEMS.slice(0, 3).forEach(it => preloadPic(it.images[0].src, w))
+    walkTimers.current.push(window.setTimeout(() => { if (viewRef.current === 'walk') landed() }, WALK_MS - 650))
+  }, [landed])
+  const skipWalk = useCallback(() => {
+    if (viewRef.current !== 'walk') return
+    walkTimers.current.forEach(clearTimeout); walkTimers.current = []
+    setFadeBlack(true)
+    window.setTimeout(() => { rig.walkAt = 0; landed(); setFadeBlack(false) }, 320)
+  }, [landed])
+  /* if the GPU can't draw the scene (context lost, black frames, a crawl), carry on in the 2D room */
+  const glFail = useCallback((why: string) => {
+    console.warn('[godfather] switching to the 2D room:', why)
+    rig.walkAt = 0
+    setMode('2d')
+    if (viewRef.current === 'walk') landed()
+  }, [landed])
   /* the shopkeeper's choices */
   const leaveTailor = useCallback((to: 'premium' | 'tour' | 'skip' | 'tailoring' | 'visit') => {
     if (viewRef.current !== 'tailor' || tailorRef.current !== 'in') return
+    if (to === 'premium' && !reduced && is3D) {
+      /* one continuous first-person walk: through the doors, past the racks, the hidden wardrobe, down into the vault */
+      setTailorPhase('walk'); startWalk()
+      window.setTimeout(() => setTailorPhase('off'), 1500)
+      return
+    }
     if (to === 'premium' && !reduced) {
-      /* through the glass doors, past the slats, into the private room; the wardrobe opens and we go down into the vault */
+      /* 2D: through the glass doors, past the slats, into the private room; the wardrobe opens and we go down into the vault */
       setTailorPhase('lead')
       window.setTimeout(() => openVault(0, true), 3300)
       window.setTimeout(() => setTailorPhase('off'), 3950)
@@ -251,7 +299,7 @@ export default function App() {
       else openVault(0, to === 'premium')
       window.setTimeout(() => setTailorPhase('off'), reduced ? 320 : 520)
     }, reduced ? 0 : 480)
-  }, [openVault, toGrid, reduced])
+  }, [openVault, toGrid, reduced, is3D, startWalk])
   const choose = useCallback((c: Choice) => leaveTailor(c.id), [leaveTailor])
   const hostNav = useCallback((n: 'collections' | 'tailoring' | 'visit' | 'private') =>
     leaveTailor(n === 'collections' ? 'tour' : n === 'private' ? 'premium' : n), [leaveTailor])
@@ -259,8 +307,8 @@ export default function App() {
   const gridToVault = useCallback(() => {
     if (sheetRef.current !== null) closeSheet(true)
     setFadeBlack(true)
-    window.setTimeout(() => { openVault(0, true); setFadeBlack(false) }, reduced ? 150 : 380)
-  }, [openVault, reduced])
+    window.setTimeout(() => { if (is3D && !reduced) startWalk(); else openVault(0, true); setFadeBlack(false) }, reduced ? 150 : 380)
+  }, [openVault, reduced, is3D, startWalk])
   const enter = useCallback(() => {
     if (viewRef.current !== 'gate') return
     store.set('gf-entered', '1')
@@ -301,7 +349,8 @@ export default function App() {
     const t = window.setTimeout(() => {
       pre(STORE(Math.max(innerWidth, innerHeight * 16 / 9) * Math.min(2, devicePixelRatio || 1)))
       pre(TAILOR.host); pre(TAILOR.curtain)
-      ITEMS.slice(0, 2).forEach(it => pre(it.images[0].src))
+      const est = innerWidth >= 960 ? Math.min(innerWidth * 0.34, innerHeight * 0.75 - 170) : Math.min(innerWidth * 0.66, innerHeight * 0.56 - 100)
+      ITEMS.slice(0, 3).forEach(it => preloadPic(it.images[0].src, est))
     }, 500)
     return () => clearTimeout(t)
   }, [])
@@ -317,6 +366,7 @@ export default function App() {
       const v = viewRef.current
       if (v === 'gate' && (e.key === 'Enter' || e.key === ' ') && document.activeElement === document.body) { e.preventDefault(); enter(); return }
       if (v === 'transition' && e.key === 'Escape') { finishEnter(); return }
+      if (v === 'walk' && e.key === 'Escape') { skipWalk(); return }
       if (v === 'tailor') return  /* Esc there finishes the intro (handled in Tailor) */
       if (v !== 'wardrobe') return
       if (e.key === 'ArrowRight') { e.preventDefault(); goTo(indexRef.current + 1) }
@@ -326,7 +376,7 @@ export default function App() {
     }
     document.addEventListener('keydown', key)
     return () => document.removeEventListener('keydown', key)
-  }, [enter, finishEnter, goTo, leaveTailor])
+  }, [enter, finishEnter, goTo, leaveTailor, skipWalk])
 
   /* ---------- sound: soft low room tone, off by default ---------- */
   const audio = useRef<{ ac: AudioContext; master: GainNode } | null>(null)
@@ -434,15 +484,15 @@ export default function App() {
   const it = sheet !== null ? ITEMS[sheet] : null
   const isFinal = index === LAST
   const inScene = view === 'wardrobe'
-  const loadUpTo = Math.max(1, index + 1)
+  const loadUpTo = Math.max(2, index + 2)   // focused piece and its neighbours
 
   return (
     <div className={`app ${is3D ? 'is3d' : 'is2d'} view-${view} ${view === 'wardrobe' ? 'vault' : ''}`}>
-      {is3D && <Suspense fallback={null}><Experience paused={view === 'grid' || (view === 'tailor' && tailor === 'in')} onReady={() => setGlReady(true)} /></Suspense>}
+      {is3D && <Suspense fallback={null}><Experience paused={view === 'grid' || view === 'gate' || (view === 'tailor' && tailor === 'in')} onFail={glFail} /></Suspense>}
       {!is3D && <div className="room2d" aria-hidden="true" />}
 
       {/* SCREEN 3: THE SECRET WARDROBE (accessible DOM over the 3D room) */}
-      <div className={`scene ${inScene ? '' : 'is-off'}`} inert={!inScene || sheetShown}>
+      <div className={`scene ${inScene ? '' : 'is-off'} ${arrive ? 'arrive' : ''}`} inert={!inScene || sheetShown}>
         <main className="track" ref={track} tabIndex={0} role="region" aria-roledescription="carousel"
           aria-label="The wardrobe. Use the left and right arrow keys to move between pieces.">
           {ITEMS.map((p, i) => {
@@ -450,8 +500,8 @@ export default function App() {
             return (
               <section key={i} className="slide" data-i={i} role="group" aria-roledescription="slide" aria-label={`Item ${i + 1} of ${N}: ${p.name}`} aria-hidden={!on}>
                 <div className="stage">
-                  {!is3D && <img className="garment" width={768} height={1024} decoding="async" draggable={false} alt={p.images[0].alt} src={i <= loadUpTo ? p.images[0].src : undefined} />}
-                  {is3D && <span className="sr-only">{p.images[0].alt}</span>}
+                  <Pic className="garment" src={p.images[0].src} alt={p.images[0].alt} sizes={GARMENT_SIZES}
+                    load={i <= loadUpTo || Math.abs(i - index) <= 2} eager={i === index || (index < 0 && i === 0)} />
                 </div>
                 <div className="copy">
                   <p className="kicker" aria-hidden="true">{pad(i + 1)} <span>/ {pad(N)}</span></p>
@@ -467,7 +517,7 @@ export default function App() {
             )
           })}
           <section className="slide final" data-i={LAST} role="group" aria-roledescription="slide" aria-label="The wardrobe is private" aria-hidden={!isFinal}>
-            <div className="stage" aria-hidden="true">{!is3D && <img className="final-logo" src={LOGO} alt="" />}</div>
+            <div className="stage" aria-hidden="true"><Mark className="final-logo" glow="neon" sizes="min(70vw, 420px)" /></div>
             <div className="copy">
               <h2 className="name line" style={{ '--i': 0 } as React.CSSProperties}>The wardrobe is private.</h2>
               <p className="fabric line" style={{ '--i': 1 } as React.CSSProperties}>Visit us or book a fitting.</p>
@@ -492,7 +542,7 @@ export default function App() {
       {view === 'grid' && <Grid key={gridCat} initialCat={gridCat} onOpen={openSheet} onEnter={gridToVault} inert={sheetShown} />}
       {(view === 'wardrobe' || view === 'grid') && (
         <header className="topbar" inert={sheetShown}>
-            <button className="home" id="home" aria-label="The Godfather. Return to the gate" onClick={toGate}><img src={LOGO_SMALL} alt="" width={96} height={73} /></button>
+            <button className="home" id="home" aria-label="The Godfather. Return to the gate" onClick={toGate}><Mark sizes="(min-width:960px) 80px, 64px" /></button>
             {view === 'wardrobe' && <button className="back-shop" id="back-shop" type="button" onClick={callTailor}>
               <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M10 2 2 10l8 8" /></svg>Back to the shop</button>}
             {view === 'wardrobe' && <p className="vault-label" aria-hidden="true">Private wardrobe · {pad(Math.min(N, Math.max(1, index + 1)))}</p>}
@@ -559,17 +609,20 @@ export default function App() {
       {tailor !== 'off' && <Tailor phase={tailor} quick={tailorQuick} reduced={reduced} onChoose={choose} onNav={hostNav} />}
 
       {(view === 'gate' || view === 'transition') && (
-        <div key={gateKey} className={`gate intro ${view === 'transition' ? 'leaving' : ''} ${is3D && glReady ? 'gl-on' : ''}`} id="gate" inert={view !== 'gate'}>
+        <div key={gateKey} className={`gate intro ${view === 'transition' ? 'leaving' : ''}`} id="gate" inert={view !== 'gate'}
+          style={gateKey === 0 ? { '--t0': `${-Math.round(performance.now())}ms` } as React.CSSProperties : undefined}>
           <div className="gate-inner">
+            <span className="crest-halo" aria-hidden="true" />
             <button className="crest-btn" id="crest" ref={crest} aria-label="The Godfather Menswear. Touch the crest to enter" onClick={enter}>
-              <span className="half l"><img src={LOGO} alt="" width={1550} height={1180} /></span>
-              <span className="half r"><img src={LOGO} alt="" width={1550} height={1180} /></span>
+              <span className="half l"><Mark glow="neon" sizes="min(78vw, 560px)" /></span>
+              <span className="half r"><Mark glow="neon" sizes="min(78vw, 560px)" /></span>
             </button>
             <p className="gate-line" id="gate-line">Touch the crest to enter.</p>
           </div>
         </div>
       )}
       {view === 'transition' && <button className="skip" id="skip" onClick={finishEnter}>Skip</button>}
+      {view === 'walk' && <button className="skip walk-skip" id="walk-skip" onClick={skipWalk}>Skip</button>}
       <div className={`blackout ${fadeBlack ? 'on' : ''}`} aria-hidden="true" />
       <div className="ring" ref={ring} aria-hidden="true" />
       {!is3D && <div className="grain" aria-hidden="true" />}

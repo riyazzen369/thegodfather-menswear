@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { MeshReflectorMaterial, PerformanceMonitor } from '@react-three/drei'
-import { EffectComposer, Bloom, Noise, Vignette } from '@react-three/postprocessing'
-import { BlendFunction } from 'postprocessing'
+import { EffectComposer, Bloom, Noise, Vignette, DepthOfField } from '@react-three/postprocessing'
+import { BlendFunction, type DepthOfFieldEffect } from 'postprocessing'
 import * as THREE from 'three'
-import { ITEMS, LOGO, STORE } from '../data'
-import { rig, easeInOut, easeOut, clamp01, smooth } from '../rig'
+import { ITEMS, STORE } from '../data'
+import { rig, easeInOut, easeOut, clamp01, smooth, WALK_MS, walkTime } from '../rig'
 
 /* ---------------- world constants ---------------- */
 const FOV = 40
@@ -38,6 +38,9 @@ function spline(ks: [number, number][]) {
 }
 const PHOTO_Z = 1.2, CURTAIN_Z = 2.6
 const DESCENT_MS = 2400
+const QS = new URLSearchParams(location.search)
+const HQ = QS.has('hq')            // debug: never drop quality
+const FORCE3D = QS.has('force3d')  // debug: never fall back to 2D for slowness
 const dolly = spline([[0.3, GATE_CAM], [1.25, 6.2], [1.95, 3.6], [2.5, PZ + D]])
 const T = () => rig.view === 'gate' ? 0 : rig.view === 'transition' ? (rig.freeze ?? (now() - rig.transStart) / 1000) : 99
 
@@ -71,21 +74,6 @@ vec3 velvet(vec2 uv, float t){
   return c;
 }`
 
-function pieceMat() {
-  return new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, toneMapped: false,
-    uniforms: { uMap: { value: null }, uB: { value: 0.2 }, uHas: { value: 0 }, uHgt: { value: 1 } },
-    vertexShader: VS,
-    fragmentShader: `uniform sampler2D uMap; uniform float uB; uniform float uHas; varying vec2 vUv;
-    void main(){
-      vec4 c = texture2D(uMap, vUv);
-      vec2 d = abs(vUv - 0.5) * 2.0;
-      float m = (1.0 - smoothstep(0.6, 1.0, d.x)) * (1.0 - smoothstep(0.78, 1.0, d.y));
-      gl_FragColor = vec4(c.rgb * uB, m * uHas);
-      #include <colorspace_fragment>
-    }`
-  })
-}
 function glowMat(color: THREE.Color, radial = true) {
   return new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
@@ -184,23 +172,46 @@ function marbleTexture() {
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4
   return t
 }
-function useLogo() {
-  const [tex, setTex] = useState<THREE.Texture | null>(null)
-  useEffect(() => { loadTex(LOGO, setTex) }, [])
-  return tex
-}
 
 /* ---------------- camera ---------------- */
-function CameraRig() {
-  const { camera } = useThree()
+function CameraRig({ path }: { path: { current: WalkPath | null } }) {
+  const { camera, size } = useThree()
+  const setFov = (f: number) => { const c = camera as THREE.PerspectiveCamera; if (Math.abs(c.fov - f) > 0.01) { c.fov = f; c.updateProjectionMatrix() } }
   const look = useMemo(() => new THREE.Vector3(), [])
+  const v = useMemo(() => ({ p: new THREE.Vector3(), q: new THREE.Vector3(), f: new THREE.Vector3() }), [])
   const cur = useRef({ x: 0, y: 0, z: GATE_CAM, init: false })
   useFrame((_, dt) => {
     const w = world(), t = T()
     const x0 = camXAt(0, w)
     const px = rig.pointer.x, py = rig.pointer.y
     let x: number, y: number, z: number, lx: number, ly: number, lz: number
-    if (rig.view === 'gate') {
+    let roll = 0
+    const walkT = walkTime()
+    if (walkT >= 0 && walkT < WALK_MS / 1000) {
+      /* first person along one spline; the path is rebuilt only when the layout changes the floor height */
+      const endY = -w.floorY
+      if (!path.current || Math.abs(path.current.key - endY) > 1e-4) path.current = makeWalk(endY)
+      const P = path.current, d = P.dist(walkT), u = clamp01(d / P.total)
+      P.curve.getPointAt(u, v.p)
+      P.curve.getPointAt(Math.min(1, u + 3.2 / P.total), v.q)
+      const speed = (P.dist(walkT + 0.06) - P.dist(Math.max(0, walkT - 0.06))) / 0.12
+      const settle = 1 - smooth(0.86, 1.0, u)
+      const amp = clamp01(speed / 2.6) * settle
+      /* head-bob (two steps per 1.4 m) and a little sway, gone by the time we reach the anchor */
+      const bob = Math.sin(d * Math.PI * 1.45) * 0.03 * amp, sway = Math.sin(d * Math.PI * 0.725) * 0.022 * amp
+      roll = Math.sin(d * Math.PI * 0.725 + 0.6) * 0.006 * amp
+      x = x0 + v.p.x + sway; y = w.floorY + v.p.y + Math.abs(bob) - 0.015 * amp; z = v.p.z
+      /* look ahead along the path (a little less steep on the stairs), handing over to the wardrobe's own aim at the end */
+      v.f.set(x0 + v.q.x, w.floorY + v.p.y + (v.q.y - v.p.y) * 0.55, v.q.z)
+      const hand = smooth(0.8, 1.0, u)
+      /* glance at the racks on the way through the shop */
+      v.f.x += Math.sin(walkT * 0.9 - 0.4) * 1.1 * smooth(0.03, 0.09, u) * (1 - smooth(0.2, 0.3, u))
+      /* wider lens while walking (much wider in portrait), back to the wardrobe's 40 degrees on arrival */
+      const asp = size.width / size.height, wide = asp < 1 ? 68 : asp < 1.4 ? 54 : 47
+      setFov(THREE.MathUtils.lerp(wide, FOV, hand))
+      lx = THREE.MathUtils.lerp(v.f.x, x - px * 0.05, hand); ly = THREE.MathUtils.lerp(v.f.y, y * 0.5, hand); lz = THREE.MathUtils.lerp(v.f.z, PZ, hand)
+      cur.current = { x, y, z, init: true }
+    } else if ((setFov(FOV), rig.view === 'gate')) {
       x = x0 + px * 0.35; y = py * 0.22; z = GATE_CAM; lx = x0; ly = 0; lz = GATE_Z
       cur.current = { x, y, z, init: true }
     } else if (rig.view === 'transition') {
@@ -224,58 +235,32 @@ function CameraRig() {
     }
     camera.position.set(x, y, z)
     look.set(lx, ly, lz); camera.lookAt(look)
+    if (roll) camera.rotateZ(roll)
   })
   return null
 }
 
-/* ---------------- gate: neon logo doors ---------------- */
+/* ---------------- gate: the light through the opening doors (the logo itself is crisp DOM above the canvas) ---------------- */
 function Gate() {
-  const logo = useLogo()
-  const L = useRef<THREE.Group>(null), R = useRef<THREE.Group>(null), root = useRef<THREE.Group>(null)
-  const wall = useRef<THREE.Mesh>(null), halo = useRef<THREE.Mesh>(null), slit = useRef<THREE.Mesh>(null)
-  const mats = useMemo(() => [0, 1].map(() => new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, side: THREE.DoubleSide, depthWrite: false, opacity: 0 })), [])
-  const haloMat = useMemo(() => glowMat(new THREE.Color(1.0, 0.04, 0.06)), [])
+  const root = useRef<THREE.Group>(null), wall = useRef<THREE.Mesh>(null), slit = useRef<THREE.Mesh>(null)
   const slitMat = useMemo(() => glowMat(new THREE.Color(1.0, 0.55, 0.38)), [])
   const wallMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#050303', transparent: true }), [])
-  const geos = useMemo(() => [0, 1].map(side => {
-    const g = new THREE.PlaneGeometry(0.5, 1)
-    g.translate(side === 0 ? 0.25 : -0.25, 0, 0)
-    const uv = g.attributes.uv as THREE.BufferAttribute
-    for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 0.5 + (side === 0 ? 0 : 0.5))
-    return g
-  }), [])
-  useEffect(() => { if (logo) mats.forEach(m => { m.map = logo; m.needsUpdate = true }) }, [logo, mats])
   useFrame(() => {
     const w = world(), t = T(), x0 = camXAt(0, w)
-    // logo size on screen: min(78vw, 560px), same as the DOM tap target
     const visHg = 2 * (GATE_CAM - GATE_Z) * TAN, unitG = visHg / rig.layout.H
     const pxW = Math.min(rig.layout.W * 0.78, 560), lw = pxW * unitG, lh = lw * (1180 / 1550)
     root.current!.position.set(x0, 0.06 * visHg, GATE_Z)
     root.current!.scale.set(lw, lh, 1)
-    const since = rig.view === 'gate' ? (now() - rig.gateAt) / 1000 : 9
-    const appear = smooth(0.8, 2.1, since)
-    const breathe = 1.75 + 0.55 * Math.sin(now() / 1000 * Math.PI * 2 / 4.8)
     const open = easeInOut(clamp01(t / 1.0))
-    const fadeOut = 1 - smooth(1.0, 1.45, t)
-    L.current!.position.x = -0.5 - open * 0.08; R.current!.position.x = 0.5 + open * 0.08
-    L.current!.rotation.y = -open * 1.85; R.current!.rotation.y = open * 1.85
-    const op = (logo ? 1 : 0) * appear * fadeOut
-    mats.forEach(m => { m.opacity = op; m.color.setScalar(rig.view === 'gate' ? breathe : 2.3 + open * 1.5) })
-    haloMat.uniforms.uI.value = op * (0.22 + 0.1 * Math.sin(now() / 1000 * Math.PI * 2 / 4.8)) * (1 - open)
     slitMat.uniforms.uI.value = smooth(0.02, 0.5, t) * (1 - smooth(0.85, 1.35, t)) * 1.6
     slit.current!.scale.set(0.05 + open * 1.4, 1.1 + open * 0.8, 1)
+    slit.current!.visible = slitMat.uniforms.uI.value > 0.001
     wallMat.opacity = 1 - smooth(0.55, 1.15, t)
-    wall.current!.visible = wallMat.opacity > 0.001
-    halo.current!.visible = haloMat.uniforms.uI.value > 0.001
+    wall.current!.visible = wallMat.opacity > 0.001 && rig.view !== 'walk'
   })
   return (
     <group>
-      <group ref={root}>
-        <mesh ref={halo} position={[0, 0, -0.3]} scale={[2.6, 2.6, 1]} material={haloMat}><planeGeometry /></mesh>
-        <mesh ref={slit} position={[0, 0, -0.05]} material={slitMat}><planeGeometry /></mesh>
-        <group ref={L} position={[-0.5, 0, 0]}><mesh geometry={geos[0]} material={mats[0]} /></group>
-        <group ref={R} position={[0.5, 0, 0]}><mesh geometry={geos[1]} material={mats[1]} /></group>
-      </group>
+      <group ref={root}><mesh ref={slit} position={[0, 0, -0.05]} material={slitMat}><planeGeometry /></mesh></group>
       <mesh ref={wall} position={[0, 0, GATE_Z - 0.4]} material={wallMat}><planeGeometry args={[400, 200]} /></mesh>
     </group>
   )
@@ -354,7 +339,8 @@ function ScreenFX() {
   useFrame(() => {
     const t = T()
     flood.uniforms.uO.value = smooth(0.62, 0.98, t) * (1 - smooth(1.02, 1.48, t)) * 0.8
-    drapes.uniforms.uO.value = smooth(1.7, 2.5, t)
+    const wt = walkTime()
+    drapes.uniforms.uO.value = smooth(1.7, 2.5, t) * (wt >= 0 ? smooth(WALK_MS / 1000 - 1.2, WALK_MS / 1000 + 0.4, wt) : 1)
     drapes.uniforms.uT.value = now() / 1000
     drapes.uniforms.uAspect.value = size.width / size.height
   })
@@ -364,6 +350,258 @@ function ScreenFX() {
       <mesh frustumCulled={false} renderOrder={999} material={flood}><planeGeometry /></mesh>
     </>
   )
+}
+
+/* ---------------- the premium walk: shop floor -> racks -> hidden wardrobe -> stairs -> vault ---------------- */
+/* Built in a local frame whose origin is the first anchor on the vault floor (x0, floorY, 0); the camera looks down -z
+   all the way, so the stairwell drops straight onto the rail where the wardrobe starts. */
+const SHOP_Y = 5.2, EYE = 1.5, DOOR_Z = 22, WARD_Z = 11.8, STAIR_END = 4.6, STEPS = 12
+const walkFog = { shop: new THREE.Color('#1c0507'), gold: new THREE.Color('#1d1406'), vault: new THREE.Color('#050303') }
+type WalkPath = { curve: THREE.CatmullRomCurve3; total: number; dist: (t: number) => number; key: number }
+function makeWalk(endY: number): WalkPath {
+  const S = SHOP_Y, E = EYE
+  const pts = [
+    [0, S + E, 23.4], [0, S + E, 20.6], [0.22, S + E, 17.8], [-0.12, S + E, 15.2], [0, S + E, 13.3],
+    [0, S + E - 0.2, 11.4], [0, 3.95, 8.2], [0, E + 0.35, 3.4], [0, endY + 0.15, -1.2], [0, endY, CAM_W]
+  ].map(p => new THREE.Vector3(p[0], p[1], p[2]))
+  const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5)
+  curve.arcLengthDivisions = 400
+  const L = curve.getLengths(400), total = L[400]
+  const at = (k: number) => L[Math.round((k / (pts.length - 1)) * 400)]
+  /* distance along the path over time: ease out of the doorway, walk the aisle, slow while the wardrobe opens,
+     step through, take the stairs, glide onto the first anchor */
+  const dist = spline([[0, 0], [1.4, at(1) * 0.75], [3.2, at(3)], [4.15, at(4) + 0.5], [4.9, at(5)], [7.25, at(7)], [WALK_MS / 1000, total]])
+  return { curve, total, dist, key: endY }
+}
+function quad(a: number[], b: number[], c: number[], d: number[], uvRepeat = [1, 1]) {
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...d], 3))
+  const [u, v] = uvRepeat
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, u, 0, u, v, 0, 0, u, v, 0, v], 2))
+  return g
+}
+function bar(a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material) {
+  const len = a.distanceTo(b), m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 6, 1), mat)
+  m.position.copy(a).add(b).multiplyScalar(0.5)
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize())
+  return m
+}
+/* a hanging suit, lit from above: jacket, shirt + tie V, trousers */
+function suitGeo() {
+  const j = new THREE.Shape()
+  j.moveTo(-0.08, 0.42); j.lineTo(-0.24, 0.36); j.lineTo(-0.29, 0.0); j.lineTo(-0.27, -0.42); j.lineTo(0.27, -0.42)
+  j.lineTo(0.29, 0.0); j.lineTo(0.24, 0.36); j.lineTo(0.08, 0.42); j.lineTo(0, 0.1); j.closePath()
+  const jacket = new THREE.ShapeGeometry(j)
+  const v = new THREE.Shape(); v.moveTo(-0.08, 0.42); v.lineTo(0.08, 0.42); v.lineTo(0, 0.1); v.closePath()
+  const shirt = new THREE.ShapeGeometry(v)
+  const t = new THREE.Shape(); t.moveTo(-0.018, 0.4); t.lineTo(0.018, 0.4); t.lineTo(0.012, 0.16); t.lineTo(0, 0.12); t.lineTo(-0.012, 0.16); t.closePath()
+  const tie = new THREE.ShapeGeometry(t)
+  const shade = (g: THREE.BufferGeometry, c: THREE.Color) => {
+    const pos = g.attributes.position as THREE.BufferAttribute, col: number[] = []
+    for (let i = 0; i < pos.count; i++) { const k = 0.35 + 0.75 * clamp01((pos.getY(i) + 0.45) / 0.9); col.push(c.r * k, c.g * k, c.b * k) }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); return g
+  }
+  return { jacket, shirt, tie, shade }
+}
+const SUIT_COLOURS = ['#1d2a44', '#2b2b2e', '#141416', '#4a1420', '#7d5f3c', '#bdb197', '#55565a', '#1e3328', '#3b2a20', '#2a1f3a']
+
+function Walk({ low }: { low: boolean }) {
+  const g = useRef<THREE.Group>(null)
+  const mats = useMemo(() => {
+    const marble = marbleTexture(); marble.repeat.set(2, 3)
+    const marbleStair = marbleTexture(); marbleStair.repeat.set(1.2, 0.3)
+    const wood = brassTexture(); wood.repeat.set(4, 1)
+    const brass = brassTexture(); brass.repeat.set(5, 2)
+    const doorWood = brassTexture()
+    return {
+      floor: new THREE.MeshBasicMaterial({ map: marble, color: new THREE.Color(0.55, 0.32, 0.3) }),
+      wall: new THREE.MeshBasicMaterial({ map: wood, color: new THREE.Color(0.42, 0.12, 0.12), side: THREE.DoubleSide }),
+      dark: new THREE.MeshBasicMaterial({ color: '#0b0405', side: THREE.DoubleSide }),
+      runner: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.32, 0.02, 0.04) }),
+      street: new THREE.MeshBasicMaterial({ color: '#0a0607' }),
+      glass: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.12, 0.14), transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }),
+      red: new THREE.MeshBasicMaterial({ color: new THREE.Color(3.4, 0.12, 0.2), toneMapped: false }),
+      redDim: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 0.05, 0.08), toneMapped: false }),
+      gold: new THREE.MeshBasicMaterial({ color: new THREE.Color(3.6, 2.3, 0.8), toneMapped: false }),
+      goldDim: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 1.0, 0.42), toneMapped: false }),
+      rail: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 0.9, 0.4), toneMapped: false }),
+      bulb: new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 2.7, 1.5), toneMapped: false }),
+      brass: new THREE.MeshBasicMaterial({ map: brass, color: new THREE.Color(0.72, 0.58, 0.44), side: THREE.DoubleSide }),
+      stair: new THREE.MeshBasicMaterial({ map: marbleStair, color: new THREE.Color(2.6, 2.1, 1.7) }),
+      riser: new THREE.MeshBasicMaterial({ color: '#120b07' }),
+      nosing: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.6, 0.66), toneMapped: false }),
+      door: new THREE.MeshBasicMaterial({ map: doorWood, color: new THREE.Color(0.5, 0.3, 0.2) }),
+      suit: new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }),
+      shirt: new THREE.MeshBasicMaterial({ color: '#c9c2b4', side: THREE.DoubleSide }),
+      tie: new THREE.MeshBasicMaterial({ color: '#7a0f1a', side: THREE.DoubleSide }),
+      warmGlow: glowMat(new THREE.Color(1.0, 0.62, 0.36)),
+      pool: glowMat(new THREE.Color(1.0, 0.5, 0.3)),
+      goldGlow: glowMat(new THREE.Color(1.0, 0.72, 0.32)),
+      spill: glowMat(new THREE.Color(1.0, 0.7, 0.3)),
+      cone: coneMat()
+    }
+  }, [])
+  const built = useMemo(() => {
+    const root = new THREE.Group(), S = SHOP_Y, m = mats
+    const add = (o: THREE.Object3D) => { root.add(o); return o }
+    const box = (w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material) => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); b.position.set(x, y, z); return add(b)
+    }
+    const shopLen = DOOR_Z - WARD_Z, shopMid = (DOOR_Z + WARD_Z) / 2
+    /* street + shop shell */
+    add(new THREE.Mesh(quad([-6, S, DOOR_Z + 8], [6, S, DOOR_Z + 8], [6, S, DOOR_Z], [-6, S, DOOR_Z]), m.street))
+    add(new THREE.Mesh(quad([-3.5, S, DOOR_Z], [3.5, S, DOOR_Z], [3.5, S, WARD_Z], [-3.5, S, WARD_Z], [2.4, 3.6]), m.floor))
+    add(new THREE.Mesh(quad([-3.5, S + 4, WARD_Z], [3.5, S + 4, WARD_Z], [3.5, S + 4, DOOR_Z], [-3.5, S + 4, DOOR_Z]), m.dark))
+    for (const sx of [-1, 1]) add(new THREE.Mesh(quad([3.5 * sx, S, DOOR_Z], [3.5 * sx, S, WARD_Z], [3.5 * sx, S + 4, WARD_Z], [3.5 * sx, S + 4, DOOR_Z], [3, 1]), m.wall))
+    /* front wall with the doorway, neon frame and sign */
+    add(new THREE.Mesh(quad([-6, S, DOOR_Z], [-1.1, S, DOOR_Z], [-1.1, S + 6, DOOR_Z], [-6, S + 6, DOOR_Z]), m.dark))
+    add(new THREE.Mesh(quad([1.1, S, DOOR_Z], [6, S, DOOR_Z], [6, S + 6, DOOR_Z], [1.1, S + 6, DOOR_Z]), m.dark))
+    add(new THREE.Mesh(quad([-1.1, S + 3, DOOR_Z], [1.1, S + 3, DOOR_Z], [1.1, S + 6, DOOR_Z], [-1.1, S + 6, DOOR_Z]), m.dark))
+    box(0.04, 3.05, 0.04, -1.13, S + 1.52, DOOR_Z + 0.03, m.red); box(0.04, 3.05, 0.04, 1.13, S + 1.52, DOOR_Z + 0.03, m.red)
+    box(2.3, 0.04, 0.04, 0, S + 3.05, DOOR_Z + 0.03, m.red); box(3.2, 0.07, 0.05, 0, S + 3.55, DOOR_Z + 0.05, m.red)
+    /* neon runs along the ceiling line and the skirting */
+    for (const sx of [-1, 1]) {
+      box(0.03, 0.03, shopLen, 3.46 * sx, S + 3.85, shopMid, m.red)
+      box(0.03, 0.03, shopLen, 3.46 * sx, S + 0.06, shopMid, m.redDim)
+    }
+    /* racks of suits both sides, angled to the aisle */
+    const sg = suitGeo()
+    let ci = 0
+    for (const sx of [-1, 1]) {
+      const x = 1.95 * sx, y = S + 2.15
+      add(bar(new THREE.Vector3(x, y, 20.9), new THREE.Vector3(x, y, 13.6), 0.018, m.rail))
+      add(bar(new THREE.Vector3(x, S, 20.9), new THREE.Vector3(x, y, 20.9), 0.016, m.rail))
+      add(bar(new THREE.Vector3(x, S, 13.6), new THREE.Vector3(x, y, 13.6), 0.016, m.rail))
+      for (let k = 0; k < 10; k++) {
+        const z = 20.5 - k * 0.72, col = new THREE.Color(SUIT_COLOURS[(ci++ * 7) % SUIT_COLOURS.length])
+        const grp = new THREE.Group(); grp.position.set(x - 0.02 * sx, y - 0.5, z); grp.rotation.y = -sx * 0.9
+        const jk = new THREE.Mesh(sg.shade(sg.jacket.clone(), col), m.suit); grp.add(jk)
+        const sh = new THREE.Mesh(sg.shirt, m.shirt); sh.position.z = 0.002; grp.add(sh)
+        const ti = new THREE.Mesh(sg.tie, m.tie); ti.position.z = 0.004; grp.add(ti)
+        const tr = new THREE.Mesh(sg.shade(new THREE.PlaneGeometry(0.42, 0.62).translate(0, -0.74, -0.01), col.clone().multiplyScalar(0.8)), m.suit); grp.add(tr)
+        add(grp)
+      }
+    }
+    /* pendant lights down the aisle */
+    const lights: THREE.Mesh[] = []
+    /* spotlights over the racks (the aisle itself stays clear, so the camera never walks through a light cone) */
+    for (const z of [19.9, 17.3, 14.7]) for (const lx of [-1.95, 1.95]) {
+      box(0.012, 0.5, 0.012, lx, S + 3.75, z, m.dark)
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), m.bulb); bulb.position.set(lx, S + 3.45, z); add(bulb)
+      const halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.warmGlow); halo.position.set(lx, S + 3.45, z); halo.scale.set(1.0, 1.0, 1); add(halo); lights.push(halo)
+      const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 1, 1, 32, 1, true), m.cone); cone.position.set(lx, S + 1.75, z); cone.scale.set(0.75, 3.4, 0.75); add(cone)
+      const pool = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.pool); pool.rotation.x = -Math.PI / 2; pool.position.set(lx, S + 0.01, z); pool.scale.set(1.8, 1.8, 1); add(pool)
+    }
+    /* a red runner down the aisle to the wardrobe */
+    add(new THREE.Mesh(quad([-0.7, S + 0.006, DOOR_Z - 0.2], [0.7, S + 0.006, DOOR_Z - 0.2], [0.7, S + 0.006, WARD_Z + 0.9], [-0.7, S + 0.006, WARD_Z + 0.9]), m.runner))
+    for (const sx of [-1, 1]) box(0.025, 0.006, DOOR_Z - WARD_Z - 1.1, 0.72 * sx, S + 0.008, (DOOR_Z - 0.2 + WARD_Z + 0.9) / 2, m.goldDim)
+    /* end wall with the hidden wardrobe */
+    const ow = 1.25, oh = 3.3
+    add(new THREE.Mesh(quad([-3.5, S, WARD_Z], [-ow, S, WARD_Z], [-ow, S + 4, WARD_Z], [-3.5, S + 4, WARD_Z], [1.5, 1]), m.wall))
+    add(new THREE.Mesh(quad([ow, S, WARD_Z], [3.5, S, WARD_Z], [3.5, S + 4, WARD_Z], [ow, S + 4, WARD_Z], [1.5, 1]), m.wall))
+    add(new THREE.Mesh(quad([-ow, S + oh, WARD_Z], [ow, S + oh, WARD_Z], [ow, S + 4, WARD_Z], [-ow, S + 4, WARD_Z]), m.wall))
+    box(0.14, oh + 0.2, 0.7, -ow - 0.07, S + (oh + 0.2) / 2, WARD_Z + 0.35, m.door)
+    box(0.14, oh + 0.2, 0.7, ow + 0.07, S + (oh + 0.2) / 2, WARD_Z + 0.35, m.door)
+    box(ow * 2 + 0.28, 0.24, 0.76, 0, S + oh + 0.12, WARD_Z + 0.36, m.door)
+    box(ow * 2 + 0.3, 0.025, 0.02, 0, S + oh + 0.25, WARD_Z + 0.75, m.goldDim)
+    const mkDoor = (side: number) => {
+      const hinge = new THREE.Group(); hinge.position.set(-side * ow, S, WARD_Z + 0.7)
+      const d = new THREE.Mesh(new THREE.BoxGeometry(ow, oh, 0.06), m.door); d.position.set(side * ow / 2, oh / 2, 0); hinge.add(d)
+      const inset = new THREE.Mesh(new THREE.PlaneGeometry(ow - 0.24, oh - 0.4), m.goldDim); inset.position.set(side * ow / 2, oh / 2, 0.031); inset.scale.set(1, 1, 1)
+      const frame = new THREE.Mesh(new THREE.PlaneGeometry(ow - 0.28, oh - 0.44), m.door); frame.position.set(side * ow / 2, oh / 2, 0.033)
+      hinge.add(inset); hinge.add(frame)
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.4, 0.04), m.gold); handle.position.set(side * (ow - 0.12), oh * 0.48, 0.05); hinge.add(handle)
+      add(hinge); return hinge
+    }
+    const wl = mkDoor(1), wr = mkDoor(-1)
+    const wardGlow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.goldGlow); wardGlow.position.set(0, S + 1.6, WARD_Z - 0.6); wardGlow.scale.set(2.6, 3.4, 1); add(wardGlow)
+    /* glass doors at the entrance */
+    const mkGlass = (side: number) => {
+      const hinge = new THREE.Group(); hinge.position.set(-side * 1.1, S, DOOR_Z)
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(1.08, 2.96), m.glass); p.position.set(side * 0.55, 1.5, 0); hinge.add(p)
+      const h = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.7, 0.03), m.rail); h.position.set(side * 0.98, 1.2, 0.02); hinge.add(h)
+      add(hinge); return hinge
+    }
+    const gl = mkGlass(1), gr = mkGlass(-1)
+    /* the stairwell: brass walls, marble steps with gold nosings, gold rails following the slope */
+    const sw = 1.24, rise = S / STEPS, run = (WARD_Z - STAIR_END) / STEPS
+    for (let k = 0; k < STEPS; k++) {
+      const top = S - (k + 1) * rise, z0 = WARD_Z - k * run
+      box(sw * 2, 0.04, run, 0, top - 0.02, z0 - run / 2, m.stair)
+      box(sw * 2, rise, 0.03, 0, top - 0.04 - rise / 2, z0 - run + 0.015, m.riser)
+      box(sw * 2, 0.03, 0.05, 0, top + 0.005, z0 - run + 0.025, m.nosing)
+      for (const sx of [-1, 1]) box(0.02, 0.035, 0.12, sx * (sw - 0.015), top + 0.28, z0 - run / 2, m.gold)   // step lights
+    }
+    add(new THREE.Mesh(quad([-sw, 0, STAIR_END], [sw, 0, STAIR_END], [sw, 0, 0], [-sw, 0, 0], [1, 2]), m.stair))
+    for (const sx of [-1, 1]) {
+      add(new THREE.Mesh(quad([sw * sx, -0.2, WARD_Z], [sw * sx, -0.2, 0], [sw * sx, S + 4, 0], [sw * sx, S + 4, WARD_Z], [6, 3]), m.brass))
+      const rail = (y: number, mat: THREE.Material) => {
+        add(bar(new THREE.Vector3(sw * sx * 0.97, S + y, WARD_Z), new THREE.Vector3(sw * sx * 0.97, y, STAIR_END), 0.014, mat))
+        add(bar(new THREE.Vector3(sw * sx * 0.97, y, STAIR_END), new THREE.Vector3(sw * sx * 0.97, y, 0), 0.014, mat))
+      }
+      rail(0.95, m.gold); rail(3.05, m.goldDim)
+    }
+    add(new THREE.Mesh(quad([-sw, S + 3.4, WARD_Z], [sw, S + 3.4, WARD_Z], [sw, 3.2, STAIR_END], [-sw, 3.2, STAIR_END]), m.dark))
+    add(new THREE.Mesh(quad([-sw, 3.2, STAIR_END], [sw, 3.2, STAIR_END], [sw, 3.2, 0], [-sw, 3.2, 0]), m.dark))
+    /* the vault's light spilling up the stairwell */
+    const spill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m.spill); spill.position.set(0, 1.4, -0.6); spill.scale.set(3.2, 3.2, 1); add(spill)
+    return { root, gl, gr, wl, wr, lights, wardGlow, spill }
+  }, [mats])
+  useFrame(({ camera }) => {
+    const t = walkTime()
+    const on = t >= 0 && t < WALK_MS / 1000 + 0.3
+    g.current!.visible = on
+    if (!on) return
+    const w = world()
+    g.current!.position.set(camXAt(0, w), w.floorY, 0)
+    const b = built
+    const gOpen = easeInOut(clamp01((t - 0.05) / 1.1)) * 1.45
+    b.gl.rotation.y = gOpen; b.gr.rotation.y = -gOpen
+    const wOpen = easeInOut(clamp01((t - 3.0) / 1.25))
+    b.wl.rotation.y = -wOpen * 1.75; b.wr.rotation.y = wOpen * 1.75
+    /* glows fade as the camera reaches them, so we never fly through a sheet of light */
+    const cz = camera.position.z
+    mats.goldGlow.uniforms.uI.value = 0.13 * wOpen * smooth(1.6, 4.0, cz - (WARD_Z - 0.6))
+    b.wardGlow.visible = mats.goldGlow.uniforms.uI.value > 0.002
+    mats.spill.uniforms.uI.value = 0.14 * smooth(1.5, 5, cz + 0.6) * smooth(11.5, 8, cz)
+    b.spill.visible = mats.spill.uniforms.uI.value > 0.002
+    mats.warmGlow.uniforms.uI.value = 0.4 + 0.04 * Math.sin(t * 7.0)
+    mats.pool.uniforms.uI.value = 0.12
+    mats.cone.uniforms.uI.value = 0.55
+    void low
+  })
+  /* compile the walk's shaders up front, so the first step through the doors doesn't hitch */
+  const { gl, scene, camera } = useThree()
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      const grp = g.current; if (!grp) return
+      grp.visible = true
+      try { gl.compile(scene, camera) } catch { /* not fatal */ }
+      grp.visible = false
+    }, 1200)
+    return () => clearTimeout(id)
+  }, [gl, scene, camera])
+  return <group ref={g} visible={false}><primitive object={built.root} /></group>
+}
+
+/* Fog + clear colour follow the walk: crimson in the shop, warming to gold down the stairs, the vault's own dark at the bottom */
+function Atmosphere({ path }: { path: { current: WalkPath | null } }) {
+  const { scene, gl } = useThree()
+  const c = useMemo(() => new THREE.Color(), [])
+  useFrame(() => {
+    const fog = scene.fog as THREE.Fog | null; if (!fog) return
+    const t = walkTime(), walking = t >= 0 && t < WALK_MS / 1000
+    if (!walking || !path.current) {
+      if (fog.color.equals(walkFog.vault)) return
+      fog.color.copy(walkFog.vault); fog.near = 9; fog.far = 30; gl.setClearColor(walkFog.vault); return
+    }
+    const p = path.current, u = p.dist(t) / p.total
+    const k1 = smooth(0.36, 0.62, u), k2 = smooth(0.8, 1.0, u)
+    c.copy(walkFog.shop).lerp(walkFog.gold, k1).lerp(walkFog.vault, k2)
+    fog.color.copy(c); gl.setClearColor(c)
+    fog.near = 5 + 4 * k2; fog.far = 22 + 8 * k2
+  })
+  return null
 }
 
 /* ---------------- the room ---------------- */
@@ -411,21 +649,17 @@ function Room({ low }: { low: boolean }) {
 
 /* ---------------- one piece in the wardrobe ---------------- */
 function Piece({ i }: { i: number }) {
-  const g = useRef<THREE.Group>(null), plane = useRef<THREE.Mesh>(null), cone = useRef<THREE.Mesh>(null)
+  const g = useRef<THREE.Group>(null), cone = useRef<THREE.Mesh>(null)
   const pool = useRef<THREE.Mesh>(null), wallPool = useRef<THREE.Mesh>(null)
-  const mat = useMemo(() => pieceMat(), []), cm = useMemo(() => coneMat(), [])
+  const cm = useMemo(() => coneMat(), [])
   const pm = useMemo(() => glowMat(new THREE.Color(1.0, 0.76, 0.4)), []), wm = useMemo(() => glowMat(new THREE.Color(0.95, 0.66, 0.3)), [])
   const plinth = useRef<THREE.Mesh>(null), ring = useRef<THREE.Mesh>(null), niche = useRef<THREE.Mesh>(null)
   const nm = useMemo(() => nicheMat(), [])
   const plMat = useMemo(() => new THREE.MeshBasicMaterial({ color: new THREE.Color(0.07, 0.055, 0.045) }), [])
   const ringMat = useMemo(() => new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.72, 0.3), toneMapped: false }), [])
-  const st = useRef({ a: 0, s: 0, loading: false, wasActive: false })
+  const st = useRef({ a: 0, s: 0 })
   useFrame((_, dt) => {
     const s = st.current
-    if (!s.loading && i <= rig.loadUpTo) {
-      s.loading = true
-      loadTex(ITEMS[i].images[0].src, t => { mat.uniforms.uMap.value = t; mat.uniforms.uHas.value = 1 })
-    }
     const w = world(), active = rig.index === i && rig.view !== 'gate'
     const tnow = now()
     if (active) {
@@ -436,15 +670,7 @@ function Piece({ i }: { i: number }) {
       s.a = Math.max(0, s.a - dt / 0.45)
       s.s = Math.max(0, s.s - dt / 0.45)
     }
-    const a = s.a, sc = 0.84 + 0.16 * a
-    const from = active ? rig.dir * (1 - a) * 0.12 * w.pieceW : 0
     g.current!.position.set(i * w.spacing, 0, 0)
-    plane.current!.position.set(from, w.py, PZ - (1 - a) * 0.9)
-    plane.current!.scale.set(w.pieceW * sc, w.pieceH * sc, 1)
-    /* on its anchor: a slow turn and a little depth with the pointer */
-    const tt = tnow / 1000
-    plane.current!.rotation.y = a * (Math.sin(tt * 0.45 + i) * 0.14 + rig.pointer.x * 0.12)
-    plane.current!.rotation.x = a * rig.pointer.y * -0.05
     const pr = w.pieceW * 0.4, ph = w.pieceH * 0.05
     plinth.current!.position.set(0, w.floorY + ph / 2, PZ + 0.05); plinth.current!.scale.set(pr, ph, pr * 0.55)
     ring.current!.position.set(0, w.floorY + ph + 0.004, PZ + 0.05); ring.current!.scale.set(pr, pr * 0.55, 1)
@@ -452,7 +678,6 @@ function Piece({ i }: { i: number }) {
     niche.current!.position.set(0, w.py + w.pieceH * 0.02, PZ - 0.9); niche.current!.scale.set(nW, nH, 1)
     nm.uniforms.uAsp.value = nW / nH; nm.uniforms.uI.value = 0.35 + 0.9 * s.s
     ringMat.color.setRGB(0.5 + 3.0 * s.s, 0.34 + 2.0 * s.s, 0.12 + 0.6 * s.s)
-    mat.uniforms.uB.value = 0.28 + 0.72 * a
     const coneH = w.pieceH * 1.9
     cone.current!.position.set(0, w.floorY + coneH / 2, PZ - 0.35)
     cone.current!.scale.set(w.pieceW * 0.62, coneH, w.pieceW * 0.4)
@@ -469,27 +694,10 @@ function Piece({ i }: { i: number }) {
       <mesh ref={niche} material={nm}><planeGeometry /></mesh>
       <mesh ref={cone} material={cm}><cylinderGeometry args={[0.06, 1, 1, 40, 1, true]} /></mesh>
       <mesh ref={pool} rotation={[-Math.PI / 2, 0, 0]} material={pm}><planeGeometry /></mesh>
-      <mesh ref={plane} material={mat} renderOrder={2}><planeGeometry /></mesh>
       <mesh ref={plinth} material={plMat} renderOrder={3}><cylinderGeometry args={[1, 1.06, 1, 48]} /></mesh>
       <mesh ref={ring} material={ringMat} rotation={[-Math.PI / 2, 0, 0]} renderOrder={4}><ringGeometry args={[0.94, 1, 64]} /></mesh>
     </group>
   )
-}
-
-/* ---------------- final panel sign ---------------- */
-function FinalSign() {
-  const logo = useLogo(), m = useRef<THREE.Mesh>(null)
-  const mat = useMemo(() => new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, depthWrite: false, opacity: 0 }), [])
-  useEffect(() => { if (logo) { mat.map = logo; mat.needsUpdate = true } }, [logo, mat])
-  useFrame(() => {
-    const w = world(), wid = Math.min(w.visW * 0.62, w.visH * 0.62)
-    m.current!.position.set(camXAt(LAST, w), w.visH * 0.22, PZ - 1.2)
-    m.current!.scale.set(wid, wid * 1180 / 1550, 1)
-    const near = clamp01(1 - Math.abs(rig.scrollP - LAST) / 1.2)
-    mat.opacity = logo ? 0.25 + 0.75 * near : 0
-    mat.color.setScalar(1.6 + 0.9 * near + 0.25 * Math.sin(now() / 1000 * 1.3))
-  })
-  return <mesh ref={m} material={mat}><planeGeometry /></mesh>
 }
 
 /* ---------------- dust in the light ---------------- */
@@ -521,33 +729,98 @@ function Stats() {
   })
   return null
 }
-function Ready({ onReady }: { onReady: () => void }) {
-  const done = useRef(false)
-  useFrame(() => { if (!done.current) { done.current = true; requestAnimationFrame(() => onReady()) } })
+/* GPU health: if the context is lost, frames come out black, or the scene crawls, hand over to the 2D room */
+function Health({ onFail }: { onFail: (why: string) => void }) {
+  const { gl } = useThree()
+  const st = useRef({ lastCheck: 0, black: 0, slow: 0, good: 0, failed: false, px: new Uint8Array(4) })
+  useEffect(() => {
+    const c = gl.domElement
+    const lost = (e: Event) => { e.preventDefault(); if (!st.current.failed) { st.current.failed = true; onFail('webgl context lost') } }
+    c.addEventListener('webglcontextlost', lost)
+    return () => c.removeEventListener('webglcontextlost', lost)
+  }, [gl, onFail])
+  useFrame(() => {
+    const s = st.current, n = now()
+    if (s.failed || n - s.lastCheck < 1000) return
+    s.lastCheck = n
+    const wt = walkTime(), settled = rig.view === 'wardrobe' && (wt < 0 || wt > WALK_MS / 1000 + 0.8) && (!rig.descentAt || n - rig.descentAt > DESCENT_MS + 800) && document.visibilityState === 'visible'
+    if (!settled) return
+    /* sample a few points on the brass wall (always lit in the vault) right after the composer has drawn */
+    s.slow = rig.fps > 0 && rig.fps < 8 ? s.slow + 1 : 0
+    if (s.slow >= 8 && !FORCE3D) { s.failed = true; onFail('too slow (' + rig.fps + ' fps)'); return }
+    if (s.good >= 3) return   // the GPU draws fine; stop reading pixels back
+    const ctx = gl.getContext(), W = ctx.drawingBufferWidth, H = ctx.drawingBufferHeight
+    let max = 0
+    for (const [fx, fy] of [[0.5, 0.8], [0.2, 0.7], [0.8, 0.7], [0.5, 0.55], [0.35, 0.9]]) {
+      ctx.readPixels(Math.floor(W * fx), Math.floor(H * fy), 1, 1, ctx.RGBA, ctx.UNSIGNED_BYTE, s.px)
+      max = Math.max(max, s.px[0], s.px[1], s.px[2])
+    }
+    s.black = max < 4 ? s.black + 1 : 0
+    if (max >= 4) s.good++
+    ;(window as any).__glHealth = { max, black: s.black, slow: s.slow, good: s.good }
+    if (s.black >= 3) { s.failed = true; onFail('frames are black') }
+  }, 2)
+  return null
+}
+/* keep the DOM pictures on their 3D anchors: the rail's pitch and the camera's glide differ from the scroll track's */
+function DomSync() {
+  const last = useRef<number[]>([])
+  useEffect(() => () => { document.querySelectorAll<HTMLElement>('.track .stage').forEach(el => { el.style.transform = '' }) }, [])
+  useFrame(({ camera }) => {
+    if (rig.view !== 'wardrobe') return
+    const els = document.querySelectorAll<HTMLElement>('.track .stage'), w = world()
+    const sp = (camera.position.x - w.camOffset) / w.spacing, pitch = w.spacing / w.unit, slideW = rig.layout.slideW
+    const dy = camera.position.y / w.unit * 0.5
+    els.forEach((el, i) => {
+      const tx = (i - sp) * pitch - (i - rig.scrollP) * slideW
+      if (Math.abs(tx - (last.current[i] ?? 1e9)) > 0.05 || Math.abs(dy - (last.current[100] ?? 1e9)) > 0.05) {
+        el.style.transform = `translate3d(${tx.toFixed(2)}px,${dy.toFixed(2)}px,0)`; last.current[i] = tx
+      }
+    })
+    last.current[100] = dy
+  })
+  return null
+}
+/* depth of field: shallow during the walk, gentle in the vault (background brass softens behind the pieces) */
+function Focus({ fx }: { fx: { current: DepthOfFieldEffect | null } }) {
+  useFrame(() => {
+    const e = fx.current; if (!e) return
+    const wt = walkTime(), walking = wt >= 0 && wt < WALK_MS / 1000
+    const want = walking ? 2.4 : rig.view === 'wardrobe' ? 1.1 : 0
+    e.bokehScale += (want - e.bokehScale) * 0.08
+    e.cocMaterial.focusDistance = walking ? 3.4 : D
+    e.cocMaterial.focusRange = walking ? 3.2 : 3.0
+  })
   return null
 }
 
-export default function Experience({ onReady, paused = false }: { onReady: () => void; paused?: boolean }) {
+export default function Experience({ onFail, paused = false }: { onFail: (why: string) => void; paused?: boolean }) {
   const [low, setLow] = useState(false)
+  const path = useRef<WalkPath | null>(null)
+  const dof = useRef<DepthOfFieldEffect | null>(null)
   const [dpr, setDpr] = useState(Math.min(1.75, window.devicePixelRatio || 1))
   return (
     <Canvas className="gl" dpr={dpr} frameloop={paused ? 'demand' : 'always'} gl={{ antialias: false, alpha: false, powerPreference: 'high-performance', stencil: false }}
       camera={{ fov: FOV, near: 0.1, far: 80, position: [0, 0, GATE_CAM] }}
       onCreated={({ gl, scene }) => { gl.setClearColor('#050303'); scene.fog = new THREE.Fog('#050303', 9, 30) }}
       aria-hidden="true">
-      <PerformanceMonitor onDecline={() => { setDpr(1); setLow(true); rig.low = true }} flipflops={2} onFallback={() => { setDpr(1); setLow(true); rig.low = true }} />
+      {!HQ && <PerformanceMonitor onDecline={() => { setDpr(1); setLow(true); rig.low = true }} flipflops={2} onFallback={() => { setDpr(1); setLow(true); rig.low = true }} />}
       <ambientLight intensity={1.2} />
-      <CameraRig />
+      <CameraRig path={path} />
+      <Atmosphere path={path} />
       <Room low={low} />
       {ITEMS.map((_, i) => <Piece key={i} i={i} />)}
-      <FinalSign />
+      <Walk low={low} />
       <Dust />
       <Storefront />
       <Gate />
       <ScreenFX />
       <Stats />
-      <Ready onReady={onReady} />
+      <Health onFail={onFail} />
+      <DomSync />
+      {!low && <Focus fx={dof} />}
       <EffectComposer multisampling={0} enableNormalPass={false}>
+        {!low ? <DepthOfField ref={dof} focusDistance={D} focusRange={3} bokehScale={0} resolutionScale={0.5} /> : <></>}
         <Bloom mipmapBlur intensity={low ? 0.8 : 1.15} luminanceThreshold={0.95} luminanceSmoothing={0.2} radius={0.75} />
         <Noise premultiply blendFunction={BlendFunction.SCREEN} opacity={0.22} />
         <Vignette offset={0.28} darkness={0.82} />

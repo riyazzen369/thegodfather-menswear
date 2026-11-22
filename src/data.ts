@@ -99,6 +99,9 @@ export const ITEMS: Item[] = [
 
 export const LOGO = `${base}brand/logo.webp`        // the real Godfather logo, black keyed out
 export const LOGO_SMALL = `${base}brand/logo-small.webp`
+/* crisp logo at every size: 1x/2x/3x sources, picked by the browser from the rendered width */
+export const LOGO_SET = [160, 240, 320, 800].map(w => `${base}brand/logo-${w}.webp ${w}w`).concat(`${base}brand/logo.webp 1550w`).join(', ')
+export const LOGO_GATE = `${base}brand/logo-800.webp`
 export const STORE = (w: number) => `${base}store/store-${w > 900 ? 1920 : 1280}.webp`
 
 /* Lorenzo's two ways in (Attire Tour first, as in the reference). */
