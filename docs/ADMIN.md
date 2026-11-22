@@ -9,8 +9,15 @@ The site can read its products from a Supabase database instead of `src/data.ts`
 2. **Products** lists everything, live and hidden. The checkbox on each row publishes or hides it immediately.
 3. **Add product** / **Edit**: name, collection, category, price ("Price from", empty = on request), order (lower first), tagline, fabric, description, fit / made to measure / delivery.
    - **Premium** pieces appear in the vault (Premium Wardrobe) *and* the Attire Tour. **Attire** pieces appear in the Attire Tour only.
-   - **Front photo** (required) and **Back photo** (optional): drop a file or choose one. It is resized to max 1600px WebP in your browser and a tiny blurred preview is made for fast loading. Drag the preview to flip it front/back as the site will.
-   - No back photo: the site shows a plain back cut from the front outline. This looks best with a transparent cut-out or a plain backdrop. (Background removal is not done in the browser; prepare cut-outs beforehand if you want them.)
+   - **Front photo** (required) and **Back photo** (optional): drop any photo, even a phone shot of a T-shirt on a bed. In the browser
+     (`src/admin/normalize.ts`) it is: background removed (`@imgly/background-removal`, `isnet_quint8`, loaded only on `/admin/`, model ~40 MB
+     fetched from IMG.LY's CDN the first time; if that fails, a plain-backdrop colour key is used and the note says so), cropped to the garment,
+     placed on the house 3:4 frame (1200x1600, top at 11%, centred, inside 72% x 76%, like `public/img/cut/*`), lightly warmed, exported as WebP.
+     The front also gets a vault photo on the red-velvet plate (`public/img/plate.webp`, 864x1152) and a blur preview. The back is sized to the
+     front's placed height so the flip lines up.
+   - Previews: **In the vault** (the plate photo) and the drag-to-flip card on the plinth. **Size / Left-right / Up-down** nudges per face are saved
+     (`nudge`), and the background-removed sources are kept (`src_paths`) so **Adjust framing** works later without re-uploading.
+   - No back photo: the site shows a plain back cut from the front outline.
 4. **Save**. **Delete** removes the product and its photos (asks first).
 
 If the database is ever unreachable, the site shows the last catalogue that browser saw, or the bundled pieces in `src/data.ts` on a first visit.
@@ -52,7 +59,13 @@ be committed or put in `.env`.
    ```
    Without them the build simply uses `src/data.ts`. `?bundled` on the site URL forces the bundled pieces (handy for comparisons).
 
+## Licence note
+
+`@imgly/background-removal` is **AGPL-3.0**. It is only in the admin page's chunks (the store bundle is checked to be free of it), but serving it
+publicly still counts as distribution. Either keep the repo's source public under terms compatible with that, buy IMG.LY's commercial licence, or swap
+`cutOut()` in `src/admin/normalize.ts` for another remover (the colour-key fallback needs no library).
+
 ## Tests
 
 - `npm run test:rls`: runs the migration in PGlite (Postgres in WASM) and checks every access rule as anon, a signed-in non-admin and an admin (20 checks, offline).
-- `npm run test:live`: builds with a mock Supabase URL and, in Chromium, checks the site reads published rows with the anon key, the grid / sheet / vault / flip view use DB data, a live change appears without reload, an unreachable DB falls back to the bundled pieces, and the admin sign-in, WebP upload and create flow (desktop + mobile).
+- `npm run test:live`: builds with a mock Supabase URL and, in Chromium, checks the site reads published rows with the anon key, the grid / sheet / vault / flip view use DB data, a live change appears without reload, an unreachable DB falls back to the bundled pieces, and the admin sign-in plus a phone-style T-shirt front + back (`tests/fixtures/`) through the normaliser: checks the WebP uploads, saved nudges, the 3:4 frame / 11% top / centring, back height = front height, the vault plate photo, and that the store bundle has no background-removal code.
