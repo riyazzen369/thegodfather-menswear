@@ -4,72 +4,67 @@ import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Item } from './data'
 
-/* Inspect a piece: the photo becomes a 2.5D garment on a gold turntable that turns slowly and can be turned by hand.
-   The cut-out (background removed offline, public/img/cut) gives the silhouette; a distance-to-edge profile gives it body,
-   a little luminance relief gives it folds, and a darker back closes it, so it reads as an object from any side. */
+/* Inspect a piece: the photo stays whole. It sits on a gently curved card on a gold turntable (no displacement, so it
+   never tears), turns within about ±35° with a spring (rubber-banding past that) and eases back to the front when let go.
+   Lighting on the curve, a little tilt and the plinth's shadow give the 3D feel; the back face is the same silhouette,
+   mirrored and darkened, so even an extreme angle shows a clean card edge, never torn geometry. */
 export const cutOf = (src: string) => src.replace(/\/img\/([^/]+)\.webp$/, '/img/cut/$1.webp')
-const GX = 72, GY = 96
-
-function garmentGeo(img: HTMLImageElement) {
-  const c = document.createElement('canvas'); c.width = GX; c.height = GY
-  const g = c.getContext('2d', { willReadFrequently: true })!; g.drawImage(img, 0, 0, GX, GY)
-  const px = g.getImageData(0, 0, GX, GY).data
-  const inside = new Float32Array(GX * GY), lum = new Float32Array(GX * GY)
-  for (let i = 0; i < GX * GY; i++) { inside[i] = px[i * 4 + 3] > 110 ? 1 : 0; lum[i] = (px[i * 4] * 0.3 + px[i * 4 + 1] * 0.59 + px[i * 4 + 2] * 0.11) / 255 }
-  /* chamfer distance to the silhouette edge, in cells */
-  const d = new Float32Array(GX * GY); const BIG = 1e4
-  for (let i = 0; i < GX * GY; i++) d[i] = inside[i] ? BIG : 0
-  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= GX || y >= GY) ? 0 : d[y * GX + x]
-  for (let y = 0; y < GY; y++) for (let x = 0; x < GX; x++) { const i = y * GX + x; if (!d[i]) continue; d[i] = Math.min(d[i], at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + 1.41, at(x + 1, y - 1) + 1.41) }
-  for (let y = GY - 1; y >= 0; y--) for (let x = GX - 1; x >= 0; x--) { const i = y * GX + x; if (!d[i]) continue; d[i] = Math.min(d[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + 1.41, at(x - 1, y + 1) + 1.41) }
-  const W = 1.5, H = 2.0, R = 11, DEPTH = 0.26
-  const front = new THREE.PlaneGeometry(W, H, GX - 1, GY - 1)
-  const pos = front.attributes.position as THREE.BufferAttribute
-  const z = new Float32Array(pos.count)
-  for (let i = 0; i < pos.count; i++) {
-    const gx = i % GX, gy = Math.floor(i / GX), k = gy * GX + gx
-    const t = Math.min(1, d[k] / R), body = 1 - (1 - t) * (1 - t)           // rounded towards the edges
-    z[i] = inside[k] ? DEPTH * body + 0.03 * (lum[k] - 0.4) * t : 0
-  }
-  /* soften the relief once so folds aren't noisy */
-  const zs = z.slice()
-  for (let y = 1; y < GY - 1; y++) for (let x = 1; x < GX - 1; x++) { const i = y * GX + x; zs[i] = (z[i] * 4 + z[i - 1] + z[i + 1] + z[i - GX] + z[i + GX]) / 8 }
-  for (let i = 0; i < pos.count; i++) pos.setZ(i, zs[i])
-  front.computeVertexNormals()
-  const back = front.clone(); const bp = back.attributes.position as THREE.BufferAttribute
-  for (let i = 0; i < bp.count; i++) bp.setZ(i, -zs[i] * 0.75)
-  back.computeVertexNormals()
-  return { front, back, H }
+export const YAW_MAX = 35 * Math.PI / 180
+/* shared turn state: the stage's pointer handlers write the target, the card springs toward it */
+type Turn = { yaw: number; pitch: number; vy: number; vp: number; ty: number; tp: number; drag: boolean; force: number | null }
+function cardGeo(aspect: number) {
+  const H = 2.0, W = H * aspect, SEG = 40, BOW = 0.09
+  const g = new THREE.PlaneGeometry(W, H, SEG, 1)
+  const pos = g.attributes.position as THREE.BufferAttribute
+  /* a shallow arc across the width (like a garment on a form): z = BOW * (1 - (2x/W)^2) */
+  for (let i = 0; i < pos.count; i++) { const u = (2 * pos.getX(i)) / W; pos.setZ(i, BOW * (1 - u * u)) }
+  g.computeVertexNormals()
+  return { geo: g, H }
 }
 
-function Garment({ src, onReady }: { src: string; onReady: () => void }) {
+function Garment({ src, onReady, turn }: { src: string; onReady: () => void; turn: { current: Turn } }) {
   const grp = useRef<THREE.Group>(null)
-  const [geo, setGeo] = useState<null | { front: THREE.BufferGeometry; back: THREE.BufferGeometry; H: number; tex: THREE.Texture }>(null)
+  const [card, setCard] = useState<null | { geo: THREE.BufferGeometry; H: number; tex: THREE.Texture }>(null)
   useEffect(() => {
     let off = false
     const img = new Image(); img.crossOrigin = 'anonymous'; img.src = src
     img.decode().then(() => {
       if (off) return
-      const tex = new THREE.Texture(img); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; tex.needsUpdate = true
-      setGeo({ ...garmentGeo(img), tex }); onReady()
+      const tex = new THREE.Texture(img); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; tex.needsUpdate = true
+      setCard({ ...cardGeo(img.naturalWidth / img.naturalHeight), tex }); onReady()
     }).catch(() => onReady())
     return () => { off = true }
   }, [src, onReady])
-  const mats = useMemo(() => geo && ({
-    front: new THREE.MeshStandardMaterial({ map: geo.tex, alphaTest: 0.5, roughness: 0.72, metalness: 0.04 }),
-    back: new THREE.MeshStandardMaterial({ map: geo.tex, alphaTest: 0.5, roughness: 0.8, metalness: 0.02, color: new THREE.Color(0.42, 0.36, 0.32), side: THREE.BackSide })
-  }), [geo])
+  const mats = useMemo(() => card && ({
+    front: new THREE.MeshStandardMaterial({ map: card.tex, alphaTest: 0.5, roughness: 0.7, metalness: 0.04, side: THREE.FrontSide }),
+    back: new THREE.MeshStandardMaterial({ map: card.tex, alphaTest: 0.5, roughness: 0.9, metalness: 0, color: new THREE.Color(0.16, 0.12, 0.1), side: THREE.BackSide })
+  }), [card])
+  useEffect(() => () => { mats?.front.dispose(); mats?.back.dispose(); card?.geo.dispose(); card?.tex.dispose() }, [mats, card])
   const born = useRef(performance.now())
-  useFrame(() => {
+  useFrame((_, dtRaw) => {
     const g = grp.current; if (!g) return
-    const k = Math.min(1, (performance.now() - born.current) / 700), e = 1 - Math.pow(1 - k, 3)
+    const T = turn.current, dt = Math.min(dtRaw, 0.1), now = performance.now()
+    const k = Math.min(1, (now - born.current) / 700), e = 1 - Math.pow(1 - k, 3)
     g.scale.setScalar(0.86 + 0.14 * e); g.position.y = -0.04 * (1 - e)
+    if (T.force != null) { T.yaw = T.force; T.vy = 0; T.pitch = 0 }
+    else {
+      /* released: spring home, with a slow idle sway so it never looks frozen */
+      const idle = T.drag ? 0 : Math.sin(now / 1000 * 0.7) * 0.12 * e
+      const ty = T.drag ? T.ty : idle, tp = T.drag ? T.tp : 0
+      const w = T.drag ? 18 : 6
+      for (let h = dt; h > 0; h -= 1 / 120) {
+        const s = Math.min(h, 1 / 120)
+        T.vy += (-2 * w * T.vy - w * w * (T.yaw - ty)) * s; T.yaw += T.vy * s
+        T.vp += (-2 * w * T.vp - w * w * (T.pitch - tp)) * s; T.pitch += T.vp * s
+      }
+    }
+    g.rotation.set(T.pitch, T.yaw, 0)
   })
-  if (!geo || !mats) return null
+  if (!card || !mats) return null
   return (
     <group ref={grp}>
-      <mesh geometry={geo.front} material={mats.front} position={[0, geo.H / 2 + 0.06, 0]} />
-      <mesh geometry={geo.back} material={mats.back} position={[0, geo.H / 2 + 0.06, 0]} />
+      <mesh geometry={card.geo} material={mats.front} position={[0, card.H / 2 + 0.07, 0]} />
+      <mesh geometry={card.geo} material={mats.back} position={[0, card.H / 2 + 0.07, 0]} />
     </group>
   )
 }
@@ -108,9 +103,37 @@ export default function Inspect({ item, threeD, onClose, onDetails, enquireHref,
     el.style.setProperty('--tx', (((e.clientX - r.left) / r.width) - 0.5).toFixed(3)); el.style.setProperty('--ty', (((e.clientY - r.top) / r.height) - 0.5).toFixed(3))
   }
   const portrait = typeof window !== 'undefined' && window.innerWidth < window.innerHeight
+  const turn = useRef<Turn>({ yaw: 0, pitch: 0, vy: 0, vp: 0, ty: 0, tp: 0, drag: false, force: null })
+  const grab = useRef<null | { id: number; x: number; y: number; n: number }>(null)
+  /* one-finger / mouse drag turns the card; a second finger (pinch) is left to the zoom */
+  const tdown = (e: React.PointerEvent) => {
+    if (!threeD) return
+    if (grab.current) { grab.current.n++; turn.current.drag = false; return }
+    grab.current = { id: e.pointerId, x: e.clientX, y: e.clientY, n: 1 }; turn.current.drag = true
+  }
+  const tmove = (e: React.PointerEvent) => {
+    const g = grab.current; if (!g || g.id !== e.pointerId || g.n > 1) return
+    const raw = ((e.clientX - g.x) / Math.max(320, window.innerWidth * 0.5)) * 1.6
+    /* within ±35° it follows the finger; past it, it rubber-bands (never more than ~50°) */
+    const a = Math.abs(raw), soft = a <= YAW_MAX ? a : YAW_MAX + (1 - Math.exp(-(a - YAW_MAX) * 2)) * 0.26
+    turn.current.ty = Math.sign(raw) * soft
+    turn.current.tp = Math.max(-0.1, Math.min(0.1, ((e.clientY - g.y) / window.innerHeight) * 0.5))
+  }
+  /* releases are caught on the window: the canvas may capture the pointer, and a finger can leave the stage */
+  useEffect(() => {
+    const up = (e: PointerEvent) => { const g = grab.current; if (!g) return; if (e.pointerId === g.id || --g.n <= 0) { grab.current = null; turn.current.drag = false } }
+    addEventListener('pointerup', up); addEventListener('pointercancel', up)
+    return () => { removeEventListener('pointerup', up); removeEventListener('pointercancel', up) }
+  }, [])
+  useEffect(() => {
+    /* test hook: hold an exact angle (degrees), or null to release */
+    ;(window as any).__inspectYaw = (deg: number | null) => { turn.current.force = deg == null ? null : deg * Math.PI / 180 }
+    ;(window as any).__inspectTurn = () => turn.current.yaw * 180 / Math.PI
+    return () => { delete (window as any).__inspectYaw; delete (window as any).__inspectTurn }
+  }, [])
   return (
     <div className={`inspect ${shown ? 'open' : ''} ${ready ? 'ready' : ''}`} role="dialog" aria-modal="true" aria-labelledby="inspect-title" id="inspect" onPointerMove={move}>
-      <div className="inspect-stage" aria-hidden="true">
+      <div className="inspect-stage" aria-hidden="true" onPointerDown={tdown} onPointerMove={tmove}>
         {threeD ? (
           <Canvas className="inspect-gl" dpr={[1, 1.75]} camera={{ fov: 34, position: [0, 1.2, portrait ? 4.6 : 4.1] }} gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}>
             <ambientLight intensity={0.35} />
@@ -118,10 +141,11 @@ export default function Inspect({ item, threeD, onClose, onDetails, enquireHref,
             <directionalLight position={[-2.2, 3.2, 3]} intensity={2.4} color="#ffd89a" />
             <directionalLight position={[2.6, 2.4, -2.8]} intensity={2.2} color="#ffb84d" />
             <pointLight position={[0, 0.4, 1.6]} intensity={1.2} color="#ffcf80" distance={5} />
-            <Suspense fallback={null}><Garment src={cutOf(src)} onReady={onReady} /></Suspense>
+            <Suspense fallback={null}><Garment src={cutOf(src)} onReady={onReady} turn={turn} /></Suspense>
             <Turntable />
-            <OrbitControls target={[0, portrait ? 0.98 : 1.08, 0]} enablePan={false} enableDamping dampingFactor={0.08} autoRotate autoRotateSpeed={1.4}
-              minPolarAngle={Math.PI / 2 - 0.32} maxPolarAngle={Math.PI / 2 + 0.06} minDistance={2.4} maxDistance={5.2} rotateSpeed={0.7} zoomSpeed={0.6} />
+            {/* zoom only (wheel, pinch); turning is the card's own clamped spring above */}
+            <OrbitControls target={[0, portrait ? 0.98 : 1.08, 0]} enablePan={false} enableRotate={false} enableDamping dampingFactor={0.08}
+              minDistance={2.4} maxDistance={5.2} zoomSpeed={0.6} />
           </Canvas>
         ) : (
           <div className="inspect-flat" ref={tilt}><img src={cutOf(src)} alt="" decoding="async" /></div>

@@ -20,7 +20,7 @@ src/main.tsx ── <App/>
 |---|---|
 | `App.tsx` | View state machine, entry/transition timers, walk start/skip/land, vault rail (spring, pointer/touch/wheel/keyboard), live region, detail sheet, inspect open/close + focus management, 2D/3D mode, `?debug=fps` overlay |
 | `three/Experience.tsx` | `CameraRig` (gate, storefront, walk spline, vault anchors, steps the rail first), `Gate`, `Storefront`, `ScreenFX`, `Walk` (shop interior, racks, hidden wardrobe, stairwell, golden vault doors, Lorenzo sprite leader), `Atmosphere`, `Room` (vault: brass, marble reflector, arches), `Piece` (plinths, spotlights), `Dust`, `DomSync` (puts DOM pictures on 3D anchors each frame), `Focus` (DOF), `Health` (GPU watchdog), `Stats`, tiers via `PerformanceMonitor` |
-| `Inspect.tsx` | `garmentGeo` (72×96 grid displaced by a chamfer distance transform of the cut-out alpha plus luminance relief; curved back side), `Garment`, `Turntable`, OrbitControls, panel with actions, reduced-motion/no-WebGL fallback |
+| `Inspect.tsx` | Turntable inspect view. The photo stays whole on a **gently curved card** (`cardGeo`: a 40-segment plane bowed 0.09 across its width, no per-pixel displacement, so it never tears). The front is the cut-out (`public/img/cut`, alpha-tested). The back face is the same silhouette mirrored and darkened (`BackSide`). Turning is the card's own critically damped spring: drag follows within ±35°, rubber-bands past it (max ~50°), adds a slight pitch tilt (±0.1 rad), and eases back to the front with a slow idle sway when released. OrbitControls handles **zoom only** (wheel, pinch; distance 2.4–5.2). Lights, the curve and the plinth's soft shadow give the 3D feel. The reduced-motion/no-WebGL fallback is a still image with CSS tilt. Test hooks: `window.__inspectYaw(deg \| null)` and `window.__inspectTurn()` |
 | `Tailor.tsx` | Lorenzo host layer: phases `in` → `out`/`lead`/`walk`, typed line by local time, choice buttons |
 | `Grid.tsx` | Attire Tour grid and filter chips |
 | `Pic.tsx` | `<picture>` with AVIF/WebP srcset, blur placeholder crossfade, `preloadPic`, `Mark` (logo) |
@@ -79,5 +79,6 @@ WhatsApp links are built as `https://wa.me/<whatsapp>?text=<prefilled enquiry ab
 ## Tests (`tests/`)
 
 - `test3d.js`: 89 checks on mobile (390×844, touch via CDP) and desktop (1440×900). Covers the gate, doors, storefront, Lorenzo, walk, vault navigation (keys, wheel, trackpad, drag, swipe), inspect, sheet, grid, focus, a11y basics and page errors. Run it with `npm test` (`URL=https://… node tests/test3d.js` for the live site).
+- `inspect-angles.js`: every item at 0/30/60/90° on 390×844 and 1440×900, plus a drag (held angle ≤ ~50°, back to the front after release). It writes contact sheets to `shots/inspect-<w>.png` (`npm run test:inspect`).
 - `vaultfps.js`: rAF frame stats while sliding (`npm run test:vault-fps`). `vaultopen.js`: stills of the vault key and the doors opening.
 - `zeus/zeus.js`: the same checks on a real Windows laptop GPU.
