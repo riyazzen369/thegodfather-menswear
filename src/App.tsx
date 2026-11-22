@@ -6,6 +6,7 @@ import Grid from './Grid'
 import { rig, TRANSITION_MS, WALK_MS } from './rig'
 
 const Experience = lazy(() => import('./three/Experience'))
+const Inspect = lazy(() => import('./Inspect'))
 
 const N = ITEMS.length, LAST = N
 /* ?debug=fps: a small overlay with frame rate, quality level, pixel ratio and the GPU watchdog (for tuning on real GPUs) */
@@ -55,6 +56,10 @@ export default function App() {
   const [index, setIndexState] = useState(-1)
   const indexRef = useRef(-1)
   const [sheet, setSheet] = useState<number | null>(null)
+  /* inspect: the selected piece in 3D on a turntable */
+  const [inspect, setInspect] = useState<number | null>(null)
+  const inspectRef = useRef<number | null>(null)
+  const inspectFrom = useRef<HTMLElement | null>(null)
   const [sheetShown, setSheetShown] = useState(false)
   const sheetRef = useRef<number | null>(null)
   const [sound, setSound] = useState(false)
@@ -108,79 +113,113 @@ export default function App() {
     rig.nudgeAt = performance.now(); rig.nudgeDir = dir
     track.current?.animate([{ transform: 'none' }, { transform: `translateX(${-dir * 26}px)` }, { transform: 'none' }], { duration: 560, easing: 'cubic-bezier(.3,.7,.3,1)' })
   }
-  /* a programmatic move in flight: settle() must not override it on slow frames */
-  const flight = useRef<{ left: number; until: number } | null>(null)
+  /* ---- the rail: one position p (in pieces), moved by a critically damped spring or by the finger, written once per frame.
+     The track no longer scrolls natively: we set scrollLeft in the same frame the 3D camera and the DOM pieces are placed,
+     so pictures and gold niches can never drift apart (that drift was the stutter). Nothing re-renders while it moves. */
+  const car = useRef({ p: 0, v: 0, target: 0, drag: false, last: 0, W: 1, maxP: LAST, wrote: -1 })
+  const railMeasure = useCallback(() => {
+    const t = track.current, s0 = slides()[0]; if (!t || !s0) return
+    const c = car.current; c.W = s0.offsetWidth || 1; c.maxP = Math.max(0, (t.scrollWidth - t.clientWidth) / c.W)
+  }, [])
+  const railJump = useCallback((i: number) => {
+    const c = car.current; railMeasure(); c.p = c.target = Math.min(i, c.maxP); c.v = 0; c.wrote = -1
+    const t = track.current; if (t) { t.scrollLeft = c.p * c.W; c.wrote = t.scrollLeft }
+    rig.scrollP = c.p
+  }, [railMeasure])
+  const railStep = useCallback((now: number) => {
+    const c = car.current, t = track.current; if (!t) return
+    let dt = (now - c.last) / 1000; c.last = now
+    if (dt <= 0) return
+    dt = Math.min(dt, 0.25) /* keep real-time pace on slow frames; sub-steps keep it stable */
+    if (!c.drag && (c.p !== c.target || c.v !== 0)) {
+      /* critically damped spring (~0.5 s to settle), sub-stepped for stability */
+      const w = 11
+      for (let h = dt; h > 0; h -= 1 / 120) {
+        const k = Math.min(h, 1 / 120), a = -2 * w * c.v - w * w * (c.p - c.target)
+        c.v += a * k; c.p += c.v * k
+      }
+      if (Math.abs(c.p - c.target) < 0.0008 && Math.abs(c.v) < 0.01) { c.p = c.target; c.v = 0 }
+    }
+    const left = Math.max(0, Math.min(c.maxP, c.p)) * c.W
+    if (Math.abs(left - c.wrote) > 0.05) { t.scrollLeft = left; c.wrote = left }
+    rig.scrollP = Math.max(0, Math.min(c.maxP, c.p))
+  }, [])
+  /* 3D drives the rail from its own frame (before the camera and pictures are placed); this loop covers 2D and paused GL */
+  useEffect(() => {
+    rig.railStep = railStep
+    let raf = 0
+    const loop = (n: number) => { if (n - rig.glStepAt > 40) railStep(n); raf = requestAnimationFrame(loop) }
+    raf = requestAnimationFrame(loop)
+    return () => { cancelAnimationFrame(raf); rig.railStep = null }
+  }, [railStep])
   const goTo = useCallback((i: number, instant = false) => {
-    const t = track.current!; const ss = slides()
     if (i < 0 || i > LAST) { nudge(i < 0 ? -1 : 1); return }
+    const c = car.current; railMeasure()
     const dir = Math.sign(i - indexRef.current) || 1
-    flight.current = { left: ss[i].offsetLeft, until: performance.now() + 1500 }
-    t.scrollTo({ left: ss[i].offsetLeft, behavior: instant || reduced ? 'auto' : 'smooth' })
+    c.target = Math.min(i, c.maxP)
+    if (instant || reduced) { c.p = c.target; c.v = 0 }
+    /* the neighbours of where we are going are decoded before they slide in */
+    for (const k of [i - 1, i + 1]) if (k >= 0 && k < LAST) preloadPic(ITEMS[k].images[0].src, garmentW())
     setActive(i, dir)
-  }, [setActive])
+  }, [setActive, railMeasure])
 
   useEffect(() => {
     const t = track.current!
-    let settleT = 0, dragging = false, moved = false
-    let down: null | { x: number; left: number; lastX: number; lastT: number; v: number; id: number } = null
-    const nearest = () => { const x = t.scrollLeft; let best = 0, d = Infinity; slides().forEach((s, k) => { const dd = Math.abs(s.offsetLeft - x); if (dd < d) { d = dd; best = k } }); return best }
-    const settle = () => {
-      if (dragging) return
-      const f = flight.current
-      if (f) { if (Math.abs(t.scrollLeft - f.left) > 2 && performance.now() < f.until) return; flight.current = null }
-      const n = nearest(); if (n !== indexRef.current) setActive(n, Math.sign(n - indexRef.current)) }
+    let moved = false
+    let down: null | { x: number; y: number; p0: number; base: number; lastX: number; lastT: number; v: number; id: number; axis: 0 | 1 | 2 } = null
+    /* focus or the browser moving the track on its own (it can't be scrolled by the user any more): adopt it */
     const onScroll = () => {
-      rig.scrollP = t.scrollLeft / (slides()[0]?.offsetWidth || 1)
-      clearTimeout(settleT); settleT = window.setTimeout(settle, 140)
+      const c = car.current
+      if (c.drag || Math.abs(t.scrollLeft - c.wrote) < 1.5) return
+      c.p = t.scrollLeft / c.W; c.wrote = t.scrollLeft
+      const n = Math.max(0, Math.min(LAST, Math.round(c.p))); c.target = Math.min(n, c.maxP)
+      if (n !== indexRef.current) setActive(n, Math.sign(n - indexRef.current))
     }
-    const onScrollEnd = () => { clearTimeout(settleT); settle() }
     t.addEventListener('scroll', onScroll, { passive: true })
-    t.addEventListener('scrollend', onScrollEnd)
-
     const pdown = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || e.button !== 0 || sheetRef.current !== null) return
-      down = { x: e.clientX, left: t.scrollLeft, lastX: e.clientX, lastT: performance.now(), v: 0, id: e.pointerId }; moved = false
+      if ((e.pointerType === 'mouse' && e.button !== 0) || sheetRef.current !== null || inspectRef.current !== null || viewRef.current !== 'wardrobe') return
+      railMeasure()
+      const c = car.current
+      down = { x: e.clientX, y: e.clientY, p0: c.p, base: indexRef.current, lastX: e.clientX, lastT: performance.now(), v: 0, id: e.pointerId, axis: 0 }; moved = false
     }
     const pmove = (e: PointerEvent) => {
       if (!down || e.pointerId !== down.id) return
-      const dx = e.clientX - down.x
-      if (!dragging && Math.abs(dx) > 6) { dragging = true; moved = true; t.classList.add('dragging'); try { t.setPointerCapture(e.pointerId) } catch { /* noop */ } }
-      if (!dragging) return
-      const n = performance.now(); down.v = (e.clientX - down.lastX) / Math.max(1, n - down.lastT); down.lastX = e.clientX; down.lastT = n
-      const max = t.scrollWidth - t.clientWidth
-      let want = down.left - dx, over = 0
-      if (want < 0) { over = want; want = 0 } else if (want > max) { over = want - max; want = max }
-      t.scrollLeft = want; rig.over = over
-      t.style.transform = over ? `translateX(${-over * 0.3}px)` : ''
+      const dx = e.clientX - down.x, dy = e.clientY - down.y
+      if (down.axis === 0 && Math.hypot(dx, dy) > 6) down.axis = Math.abs(dx) >= Math.abs(dy) ? 1 : 2
+      if (down.axis !== 1) return
+      const c = car.current
+      if (!c.drag) { c.drag = true; moved = true; t.classList.add('dragging'); try { t.setPointerCapture(e.pointerId) } catch { /* noop */ } }
+      const n = performance.now(), dtm = Math.max(1, n - down.lastT)
+      down.v = down.v * 0.4 + 0.6 * ((e.clientX - down.lastX) / dtm); down.lastX = e.clientX; down.lastT = n
+      let want = down.p0 - dx / c.W, over = 0
+      if (want < 0) { over = want * c.W; want = 0 } else if (want > c.maxP) { over = (want - c.maxP) * c.W; want = c.maxP }
+      c.p = want; c.v = 0; rig.over = over
+      t.style.transform = over ? `translate3d(${(-over * 0.3).toFixed(1)}px,0,0)` : ''
     }
     const pup = (e: PointerEvent) => {
       if (!down || e.pointerId !== down.id) return
-      const was = dragging, dx = e.clientX - down.x, v = performance.now() - down.lastT > 90 ? 0 : down.v
-      down = null
-      if (!was) return
-      dragging = false; rig.over = 0
+      const d = down; down = null
+      const c = car.current
+      if (!c.drag) return
+      c.drag = false; rig.over = 0; t.classList.remove('dragging')
       if (t.style.transform) { t.animate([{ transform: t.style.transform }, { transform: 'none' }], { duration: 450, easing: 'cubic-bezier(.2,.7,.2,1)' }); t.style.transform = '' }
-      const base = indexRef.current
-      let to = base
-      if (dx < -60 || v < -0.45) to = base + 1; else if (dx > 60 || v > 0.45) to = base - 1
+      const vpx = performance.now() - d.lastT > 90 ? 0 : d.v            // px per ms
+      const dx = e.clientX - d.x
+      let to = d.base
+      if (dx < -50 || vpx < -0.4) to = d.base + 1; else if (dx > 50 || vpx > 0.4) to = d.base - 1
       to = Math.max(0, Math.min(LAST, to))
-      const left = slides()[to].offsetLeft
-      flight.current = { left, until: performance.now() + 1500 }
-      t.scrollTo({ left, behavior: reduced ? 'auto' : 'smooth' })
-      setActive(to, Math.sign(to - base) || 1)
-      // re-enable snapping only once the glide has arrived, so snap can never pull it back mid-way
-      const started = performance.now()
-      const fin = () => {
-        if (Math.abs(t.scrollLeft - left) > 2 && performance.now() - started < 1400) { t.addEventListener('scrollend', fin, { once: true }); setTimeout(fin, 300); return }
-        if (!t.classList.contains('dragging')) return
-        t.scrollLeft = left; t.classList.remove('dragging')
-      }
-      t.addEventListener('scrollend', fin, { once: true }); setTimeout(fin, 700)
+      /* hand the finger's speed to the spring, so the glide continues the gesture instead of restarting */
+      c.v = Math.max(-8, Math.min(8, -vpx * 1000 / c.W))
+      c.target = Math.min(to, c.maxP)
+      if (reduced) { c.p = c.target; c.v = 0 }
+      if (to !== indexRef.current) { for (const k of [to - 1, to + 1]) if (k >= 0 && k < LAST) preloadPic(ITEMS[k].images[0].src, garmentW()); setActive(to, Math.sign(to - d.base) || 1) }
     }
     const click = (e: MouseEvent) => {
       if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; return }
       const s = (e.target as HTMLElement).closest('.slide') as HTMLElement | null
       if (s && +s.dataset.i! !== indexRef.current) { e.preventDefault(); goTo(+s.dataset.i!) }
+      /* a tap on the piece in focus opens it in 3D */
+      else if (s && (e.target as HTMLElement).closest('.garment')) { e.preventDefault(); openInspect(+s.dataset.i!, s.querySelector('.details') as HTMLElement | null) }
     }
     t.addEventListener('pointerdown', pdown)
     window.addEventListener('pointermove', pmove)
@@ -192,7 +231,7 @@ export default function App() {
     let acc = 0, lock = false, quietT = 0, lockT = 0
     const tryUnlock = () => { acc = 0; const left = lockT - performance.now(); if (left <= 0) lock = false; else quietT = window.setTimeout(tryUnlock, left) }
     const wheel = (e: WheelEvent) => {
-      if (viewRef.current !== 'wardrobe' || sheetRef.current !== null) return
+      if (viewRef.current !== 'wardrobe' || sheetRef.current !== null || inspectRef.current !== null) return
       e.preventDefault()
       const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
       clearTimeout(quietT); quietT = window.setTimeout(tryUnlock, 160)
@@ -201,15 +240,15 @@ export default function App() {
       if (Math.abs(acc) >= 30) { const dir = acc > 0 ? 1 : -1; acc = 0; lock = true; lockT = performance.now() + 650; goTo(indexRef.current + dir) }
     }
     window.addEventListener('wheel', wheel, { passive: false })
-    const resize = () => { measure(); if (indexRef.current >= 0) t.scrollTo({ left: slides()[indexRef.current].offsetLeft, behavior: 'auto' }); rig.scrollP = t.scrollLeft / (slides()[0]?.offsetWidth || 1) }
+    const resize = () => { measure(); railMeasure(); if (indexRef.current >= 0) railJump(indexRef.current) }
     window.addEventListener('resize', resize)
     return () => {
-      t.removeEventListener('scroll', onScroll); t.removeEventListener('scrollend', onScrollEnd)
+      t.removeEventListener('scroll', onScroll)
       t.removeEventListener('pointerdown', pdown); window.removeEventListener('pointermove', pmove)
       window.removeEventListener('pointerup', pup); window.removeEventListener('pointercancel', pup)
       t.removeEventListener('click', click, true); window.removeEventListener('wheel', wheel); window.removeEventListener('resize', resize)
     }
-  }, [goTo, setActive, measure])
+  }, [goTo, setActive, measure, railMeasure, railJump])
 
   /* ---------- pointer + gyro (gate parallax, red ring) ---------- */
   const ring = useRef<HTMLDivElement>(null)
@@ -247,13 +286,12 @@ export default function App() {
   /* into the golden bunker: put the wardrobe rail at `target`, start the camera descent */
   const openVault = useCallback((target = 0, descent = true) => {
     const t = track.current!, ss = slides()
-    flight.current = null
-    t.scrollTo({ left: ss[target].offsetLeft, behavior: 'auto' })
-    rig.scrollP = t.scrollLeft / (ss[0]?.offsetWidth || 1); rig.snap = true
+    void t; void ss
+    railJump(target); rig.snap = true
     rig.descentAt = descent && !reduced ? performance.now() : 0
     setView('wardrobe'); setActive(target, 1, true)
     track.current?.focus({ preventScroll: true })
-  }, [setActive, reduced])
+  }, [setActive, reduced, railJump])
   const toGrid = useCallback((cat = 'all') => {
     setGridCat(cat); setView('grid')
     requestAnimationFrame(() => { const g = document.getElementById('grid'); if (g) g.scrollTop = 0; document.getElementById('grid-title')?.focus({ preventScroll: true }) })
@@ -269,7 +307,7 @@ export default function App() {
   const startWalk = useCallback(() => {
     walkTimers.current.forEach(clearTimeout); walkTimers.current = []
     const t = track.current!
-    t.scrollTo({ left: 0, behavior: 'auto' }); rig.scrollP = 0
+    void t; railJump(0)
     indexRef.current = -1; rig.index = -1
     slides().forEach(s => s.classList.remove('is-active'))
     rig.descentAt = 0; rig.walkAt = performance.now()
@@ -330,7 +368,7 @@ export default function App() {
     if (viewRef.current !== 'gate') return
     store.set('gf-entered', '1')
     const t = track.current!
-    t.scrollTo({ left: 0, behavior: 'auto' }); rig.scrollP = 0
+    void t; railJump(0)
     indexRef.current = -1; rig.index = -1
     slides().forEach(s => s.classList.remove('is-active'))
     rig.transStart = performance.now()
@@ -375,6 +413,11 @@ export default function App() {
   /* ---------- keyboard ---------- */
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (inspectRef.current !== null && sheetRef.current === null) {
+        if (e.key === 'Escape') { e.preventDefault(); closeInspect() }
+        else if (e.key === 'Tab') { const d = document.getElementById('inspect'); const f = d ? Array.from(d.querySelectorAll<HTMLElement>('a,button')) : []; if (f.length) { const i = f.indexOf(document.activeElement as HTMLElement); if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus() } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus() } } }
+        return
+      }
       if (sheetRef.current !== null) {
         if (e.key === 'Escape') { e.preventDefault(); closeSheet() }
         else if (e.key === 'Tab') trapFocus(e)
@@ -421,6 +464,16 @@ export default function App() {
   const sheetEl = useRef<HTMLElement>(null), gallery = useRef<HTMLDivElement>(null), sheetBody = useRef<HTMLDivElement>(null)
   const [gIdx, setGIdx] = useState(0)
   const closeT = useRef(0)
+  const openInspect = (i: number, opener: HTMLElement | null) => {
+    if (i < 0 || i >= LAST || inspectRef.current !== null) return
+    inspectFrom.current = opener; inspectRef.current = i; setInspect(i)
+  }
+  function closeInspect(then?: () => void) {
+    if (inspectRef.current === null) return
+    const el = document.getElementById('inspect'); el?.classList.add('closing')
+    inspectRef.current = null
+    window.setTimeout(() => { setInspect(null); if (then) then(); else inspectFrom.current?.focus({ preventScroll: true }) }, reduced ? 200 : 380)
+  }
   const openSheet = (i: number, opener: HTMLElement) => {
     clearTimeout(closeT.current)
     returnFocus.current = opener
@@ -505,7 +558,7 @@ export default function App() {
 
   return (
     <div className={`app ${is3D ? 'is3d' : 'is2d'} view-${view} ${view === 'wardrobe' ? 'vault' : ''}`}>
-      {is3D && glMount && <Suspense fallback={null}><Experience paused={view === 'grid' || view === 'gate' || (view === 'tailor' && tailor === 'in')} onFail={glFail} /></Suspense>}
+      {is3D && glMount && <Suspense fallback={null}><Experience paused={inspect !== null || view === 'grid' || view === 'gate' || (view === 'tailor' && tailor === 'in')} onFail={glFail} /></Suspense>}
       {!is3D && <div className="room2d" aria-hidden="true" />}
 
       {/* SCREEN 3: THE SECRET WARDROBE (accessible DOM over the 3D room) */}
@@ -527,7 +580,7 @@ export default function App() {
                   {p.price != null && <p className="price line" style={{ '--i': 2 } as React.CSSProperties}>From {inr.format(p.price)}{SAMPLE_PRICES && <small>sample price</small>}</p>}
                   <div className="actions line" style={{ '--i': 3 } as React.CSSProperties}>
                     <a className="btn primary" href={enquire(p)} target="_blank" rel="noopener" tabIndex={on ? 0 : -1}>{WA_ICON}Enquire on WhatsApp</a>
-                    <button className="link details" type="button" tabIndex={on ? 0 : -1} onClick={e => openSheet(i, e.currentTarget)}>View details</button>
+                    <button className="link details" type="button" tabIndex={on ? 0 : -1} onClick={e => openInspect(i, e.currentTarget)}>View details</button>
                   </div>
                 </div>
               </section>
@@ -556,6 +609,12 @@ export default function App() {
         </footer>
       </div>
 
+      {inspect !== null && <Suspense fallback={null}>
+        <Inspect item={ITEMS[inspect]} threeD={is3D && !reduced} enquireHref={enquire(ITEMS[inspect])}
+          price={ITEMS[inspect].price != null ? `From ${inr.format(ITEMS[inspect].price!)}` : null}
+          onClose={() => closeInspect()}
+          onDetails={() => { const i = inspect, op = inspectFrom.current; closeInspect(() => { if (op) openSheet(i, op) }) }} />
+      </Suspense>}
       {view === 'grid' && <Grid key={gridCat} initialCat={gridCat} onOpen={openSheet} onEnter={gridToVault} inert={sheetShown} />}
       {(view === 'wardrobe' || view === 'grid') && (
         <header className="topbar" inert={sheetShown}>

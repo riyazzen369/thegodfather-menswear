@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { MeshReflectorMaterial, PerformanceMonitor } from '@react-three/drei'
 import { EffectComposer, Bloom, Noise, Vignette, DepthOfField } from '@react-three/postprocessing'
@@ -186,6 +186,8 @@ function CameraRig({ path }: { path: { current: WalkPath | null } }) {
   const v = useMemo(() => ({ p: new THREE.Vector3(), q: new THREE.Vector3(), f: new THREE.Vector3() }), [])
   const cur = useRef({ x: 0, y: 0, z: GATE_CAM, init: false })
   useFrame((_, dt) => {
+    /* move the rail first, so camera, niches and DOM pictures all use this frame's position */
+    if (rig.railStep) { const n = now(); rig.glStepAt = n; rig.railStep(n) }
     const w = world(), t = T()
     const x0 = camXAt(0, w)
     const px = rig.pointer.x, py = rig.pointer.y
@@ -905,13 +907,15 @@ function Health({ onFail }: { onFail: (why: string) => void }) {
 /* keep the DOM pictures on their 3D anchors: the rail's pitch and the camera's glide differ from the scroll track's */
 function DomSync() {
   const last = useRef<number[]>([])
+  const els = useRef<HTMLElement[]>([])
   useEffect(() => () => { document.querySelectorAll<HTMLElement>('.track .stage').forEach(el => { el.style.transform = '' }) }, [])
   useFrame(({ camera }) => {
     if (rig.view !== 'wardrobe') return
-    const els = document.querySelectorAll<HTMLElement>('.track .stage'), w = world()
+    if (!els.current.length || !els.current[0].isConnected) els.current = Array.from(document.querySelectorAll<HTMLElement>('.track .stage'))
+    const els_ = els.current, w = world()
     const sp = (camera.position.x - w.camOffset) / w.spacing, pitch = w.spacing / w.unit, slideW = rig.layout.slideW
     const dy = camera.position.y / w.unit * 0.5
-    els.forEach((el, i) => {
+    els_.forEach((el, i) => {
       /* only pieces near the camera move; translating far ones would widen the track's scroll area and feed back into the scroll */
       if (i >= LAST || Math.abs(i - sp) > 2.5) { if (last.current[i] !== 0) { el.style.transform = ''; last.current[i] = 0 } return }
       const tx = (i - sp) * pitch - (i - rig.scrollP) * slideW
@@ -944,7 +948,8 @@ const TIER = {
   med: { dpr: 1.25, dof: false, reflect: 256, bloomLevels: 6 },
   high: { dpr: 1.75, dof: true, reflect: 512, bloomLevels: 8 }
 } as const
-export default function Experience({ onFail, paused = false }: { onFail: (why: string) => void; paused?: boolean }) {
+export default memo(Experience)
+function Experience({ onFail, paused = false }: { onFail: (why: string) => void; paused?: boolean }) {
   const [tier, setTier] = useState<Tier>(Q ?? 'med')
   const T_ = TIER[tier], low = tier === 'low'
   const dpr = Math.min(T_.dpr, window.devicePixelRatio || 1)
@@ -963,7 +968,8 @@ export default function Experience({ onFail, paused = false }: { onFail: (why: s
   /* a tier change rebuilds the post chain (a visible hitch), so it waits until nothing is moving:
      never mid-entry or mid-walk; applied on the next calm moment instead */
   const want = useRef<Tier | null>(null)
-  const calm = () => rig.view !== 'transition' && rig.view !== 'walk' && !(walkTime() >= 0 && walkTime() < WALK_MS / 1000 + 0.5) && (!rig.descentAt || performance.now() - rig.descentAt > DESCENT_MS)
+  /* frozen in the vault too: a rebuild there would hitch a slide */
+  const calm = () => rig.view !== 'transition' && rig.view !== 'walk' && rig.view !== 'wardrobe' && !(walkTime() >= 0 && walkTime() < WALK_MS / 1000 + 0.5) && (!rig.descentAt || performance.now() - rig.descentAt > DESCENT_MS)
   const ask = (f: (t: Tier) => Tier) => { want.current = f(want.current ?? tier) }
   useEffect(() => {
     /* ...and only once the view has been settled for a couple of seconds (not on arrival in the vault) */

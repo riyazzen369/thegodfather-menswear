@@ -20,6 +20,8 @@ export const rig = {
   quality: 'auto-high' as string,
   dpr: 1,
   snap: false,
+  railStep: null as null | ((now: number) => void),   // the wardrobe rail, stepped from the 3D frame when it runs
+  glStepAt: 0,
   descentAt: 0,          // when the camera started descending into the vault
   walkAt: 0,             // when the premium walk-in started (0 = not walking)
   /* debug: ?freeze=1.3 holds the transition at that second (for screenshots) */

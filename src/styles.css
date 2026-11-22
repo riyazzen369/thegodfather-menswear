@@ -44,10 +44,11 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .is3d .scene::before{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(to bottom, transparent 46%, rgba(7,4,5,.55) 62%, rgba(7,4,5,.85) 100%)}
 @media (min-width:960px){ .is3d .scene::before{background:linear-gradient(90deg, transparent 38%, rgba(7,4,5,.55) 55%, rgba(7,4,5,.7) 100%)} }
-.track{position:absolute;inset:0;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;
-  scrollbar-width:none;overscroll-behavior-x:contain;touch-action:pan-x;cursor:grab}
+/* the rail is moved by script (spring + drag), never by native scrolling, so it stays in step with the 3D room */
+.track{position:absolute;inset:0;display:flex;overflow:hidden;
+  scrollbar-width:none;overscroll-behavior-x:contain;touch-action:pan-y;cursor:grab}
 .track::-webkit-scrollbar{display:none}
-.track.dragging{scroll-snap-type:none;cursor:grabbing;user-select:none}
+.track.dragging{cursor:grabbing;user-select:none}
 .track:focus-visible{outline:2px solid var(--neon);outline-offset:-6px;border-radius:14px}
 .slide{flex:0 0 92%;height:100%;scroll-snap-align:start;scroll-snap-stop:always;position:relative;display:flex;flex-direction:column;
   padding:calc(var(--sat) + 72px) 18px calc(var(--sab) + 92px) calc(var(--sal) + 22px)}
@@ -489,10 +490,13 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .garment{flex:0 0 auto;height:min(100cqh, 133.333cqw);aspect-ratio:3/4;width:auto;user-select:none;-webkit-user-drag:none;overflow:visible;
   -webkit-mask-image:linear-gradient(to right,transparent,#000 20%,#000 80%,transparent),linear-gradient(to bottom,transparent,#000 11%,#000 89%,transparent);
   -webkit-mask-composite:source-in;mask-image:linear-gradient(to right,transparent,#000 20%,#000 80%,transparent),linear-gradient(to bottom,transparent,#000 11%,#000 89%,transparent);mask-composite:intersect;
-  filter:brightness(.42);transform:translateX(var(--from,8%)) scale(.84);transition:filter .45s var(--ease), transform .45s var(--ease)}
-.slide.is-active .garment{filter:none;transform:none;transition:filter .7s var(--ease), transform .8s var(--ease)}
-.is2d .garment{filter:brightness(.3) opacity(.6)}
-.is2d .slide.is-active .garment{filter:none}
+  position:relative;transform:translateX(var(--from,8%)) scale(.84);transition:transform .45s var(--ease)}
+/* dimming is a black layer's opacity (composited), not a brightness filter (repainted every frame of the change) */
+.garment::after{content:"";position:absolute;inset:0;background:#000;opacity:.58;pointer-events:none;transition:opacity .45s var(--ease)}
+.slide.is-active .garment{transform:none;transition:transform .8s var(--ease)}
+.slide.is-active .garment::after{opacity:0;transition:opacity .7s var(--ease)}
+.is2d .garment::after{opacity:.75}
+.is2d .slide.is-active .garment::after{opacity:0}
 .garment picture{transform:perspective(1400px) rotateY(calc(var(--px, 0) * 6deg)) rotateX(calc(var(--py, 0) * -2.5deg));transition:transform .5s var(--ease)}
 .slide.is-active .garment img{animation:sway 9s ease-in-out infinite}
 @keyframes sway{0%,100%{transform:perspective(1400px) rotateY(-5deg)}50%{transform:perspective(1400px) rotateY(5deg)}}
@@ -517,3 +521,32 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .fps-debug{position:fixed;left:8px;bottom:8px;z-index:200;padding:4px 8px;border-radius:6px;background:rgba(0,0,0,.72);color:#9f9;font:12px/1.3 ui-monospace,monospace;pointer-events:none;white-space:nowrap}
 
 @media (prefers-reduced-motion: reduce){ .cig-ember,.cig-ember::after,.cat-lid,.host-fig{animation:none} .cat-lid{transform:scaleY(0)} .cig-ember{opacity:.85} }
+
+/* ---------- inspect: the selected piece on a gold turntable ---------- */
+.inspect{position:fixed;inset:0;z-index:60;display:grid;grid-template-columns:1fr;grid-template-rows:1fr auto;opacity:0;transform:scale(1.03);
+  background:radial-gradient(ellipse 60% 70% at 42% 46%, #4a3313, #1e1207 45%, #070404 85%);
+  transition:opacity .45s var(--ease), transform .55s var(--ease);touch-action:none}
+.inspect.open{opacity:1;transform:none}
+.inspect.closing{opacity:0;transform:scale(1.02)}
+.inspect-stage{position:relative;min-height:0}
+.inspect-gl{position:absolute!important;inset:0;opacity:0;transition:opacity .6s var(--ease)}
+.inspect.ready .inspect-gl{opacity:1}
+.inspect-flat{position:absolute;inset:6% 10%;display:grid;place-items:center;perspective:1200px}
+.inspect-flat img{max-height:100%;max-width:100%;filter:drop-shadow(0 30px 30px rgba(0,0,0,.6));
+  transform:rotateY(calc(var(--tx,0) * 14deg)) rotateX(calc(var(--ty,0) * -8deg));transition:transform .4s var(--ease)}
+.inspect-panel{padding:16px 22px calc(var(--sab) + 20px);background:linear-gradient(to top, rgba(7,4,4,.96), rgba(7,4,4,.7));color:#efe6dc}
+.inspect-kicker{font-size:.66rem;letter-spacing:.2em;text-transform:uppercase;color:#e9c46a;margin:0 0 6px}
+.inspect-panel h2{font-family:var(--display, Georgia, serif);font-size:clamp(1.5rem,4.6vw,2.4rem);margin:0 0 4px}
+.inspect-tag{margin:0 0 6px;opacity:.8;font-size:.92rem}
+.inspect-price{margin:0 0 12px;color:#f2c46b;font-weight:600}
+.inspect-actions{display:flex;gap:10px;flex-wrap:wrap}
+.inspect-hint{margin:12px 0 0;font-size:.72rem;opacity:.6;letter-spacing:.06em}
+.inspect-close{position:absolute;top:calc(var(--sat, 0px) + 14px);right:14px;width:44px;height:44px;border-radius:50%;border:1px solid rgba(233,196,106,.5);
+  background:rgba(10,6,4,.6);color:#f2e6d2;font-size:1.6rem;line-height:1;cursor:pointer}
+.inspect-close:focus-visible{outline:2px solid #f2c46b;outline-offset:3px}
+@media (min-width:960px){
+  .inspect{grid-template-columns:1fr min(30vw,420px);grid-template-rows:1fr}
+  .inspect-panel{align-self:center;background:none;padding:0 48px 0 0;grid-column:2;grid-row:1;position:relative;z-index:1}
+  .inspect-stage{grid-column:1/-1;grid-row:1}
+}
+@media (prefers-reduced-motion: reduce){ .inspect,.inspect.open,.inspect-flat img{transition:opacity .25s linear;transform:none} }
