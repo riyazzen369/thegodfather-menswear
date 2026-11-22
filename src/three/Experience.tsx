@@ -708,6 +708,8 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
       /* everything, including the storefront and curtains that are hidden at the gate */
       const hidden: THREE.Object3D[] = []
       scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true } })
+      /* upload the walk's textures now too (marble, brass, wood), not on the first frame of the walk */
+      grp.traverse(o => { const mt = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined; if (mt && 'map' in mt && mt.map) { try { gl.initTexture(mt.map) } catch { /* later */ } } })
       /* async where the driver supports parallel compile, so the gate's glow never stalls while it happens */
       const restore = () => hidden.forEach(o => { o.visible = false })
       try {
@@ -958,9 +960,15 @@ export default function Experience({ onFail, paused = false }: { onFail: (why: s
      never mid-entry or mid-walk; applied on the next calm moment instead */
   const want = useRef<Tier | null>(null)
   const calm = () => rig.view !== 'transition' && rig.view !== 'walk' && !(walkTime() >= 0 && walkTime() < WALK_MS / 1000 + 0.5) && (!rig.descentAt || performance.now() - rig.descentAt > DESCENT_MS)
-  const ask = (f: (t: Tier) => Tier) => { want.current = f(want.current ?? tier); if (calm()) { setTier(want.current); want.current = null } }
+  const ask = (f: (t: Tier) => Tier) => { want.current = f(want.current ?? tier) }
   useEffect(() => {
-    const id = window.setInterval(() => { if (want.current && calm()) { setTier(want.current); want.current = null } }, 400)
+    /* ...and only once the view has been settled for a couple of seconds (not on arrival in the vault) */
+    let since = performance.now(), was = rig.view as string
+    const id = window.setInterval(() => {
+      const n = performance.now()
+      if (rig.view !== was || !calm()) { was = rig.view; since = n; return }
+      if (want.current && n - since > 2200) { setTier(want.current); want.current = null }
+    }, 400)
     return () => clearInterval(id)
   }, [])
   const down = () => ask(t => t === 'high' ? 'med' : 'low')
