@@ -19,7 +19,9 @@ export const sources = (src: string) => {
     webp: `${p.dir}r/${p.name}-512.webp 512w, ${src} 864w`
   }
 }
-export const lqip = (src: string) => { const p = parts(src); return p ? LQIP[p.name] : undefined }
+/* placeholders for live-catalogue photos (absolute URLs), registered when the catalogue loads */
+export const REMOTE_LQIP = new Map<string, string>()
+export const lqip = (src: string) => { const p = parts(src); return (p ? LQIP[p.name] : undefined) ?? REMOTE_LQIP.get(src) }
 
 /* warm the cache for a picture (same choice of source the <picture> would make) */
 const avifOK = (() => { try { return document.createElement('canvas').toDataURL('image/avif').startsWith('data:image/avif') } catch { return false } })()

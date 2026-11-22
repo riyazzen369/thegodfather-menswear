@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { CONTACT, ITEMS, SAMPLE_PRICES, STORE, TAILOR, type Item, type Choice } from './data'
+import { CONTACT, ITEMS, SAMPLE_PRICES, STORE, TAILOR, vaultCount, onCatalogue, type Item, type Choice } from './data'
 import Pic, { Mark, preloadPic } from './Pic'
 import Tailor from './Tailor'
 import Grid from './Grid'
@@ -8,7 +8,9 @@ import { rig, TRANSITION_MS, WALK_MS } from './rig'
 const Experience = lazy(() => import('./three/Experience'))
 const Inspect = lazy(() => import('./Inspect'))
 
-const N = ITEMS.length, LAST = N
+/* vault size: the premium pieces. Re-read when the live catalogue changes (the app is remounted then). */
+let N = vaultCount(), LAST = N
+onCatalogue(() => { N = vaultCount(); LAST = N })
 /* ?debug=fps: a small overlay with frame rate, quality level, pixel ratio and the GPU watchdog (for tuning on real GPUs) */
 const DEBUG_FPS = new URLSearchParams(location.search).get('debug') === 'fps'
 function FpsOverlay({ mode }: { mode: string }) {
@@ -42,7 +44,7 @@ const WA_ICON = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const CALL_ICON = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M6.5 3.5h3l1.5 4-2 1.3a10 10 0 0 0 6.2 6.2l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A16 16 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z" /></svg>
 const Chev = ({ d }: { d: 'l' | 'r' }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={d === 'l' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'} /></svg>
 
-export default function App() {
+export default function App(_: { rev?: number }) {
   const reduced = useRef(matchMedia('(prefers-reduced-motion: reduce)').matches).current
   const [mode, setMode] = useState<'3d' | '2d'>(() => (!reduced && webglOK() && !new URLSearchParams(location.search).has('2d')) ? '3d' : '2d')
   const is3D = mode === '3d'
@@ -465,7 +467,7 @@ export default function App() {
   const [gIdx, setGIdx] = useState(0)
   const closeT = useRef(0)
   const openInspect = (i: number, opener: HTMLElement | null) => {
-    if (i < 0 || i >= LAST || inspectRef.current !== null) return
+    if (i < 0 || i >= ITEMS.length || inspectRef.current !== null) return
     inspectFrom.current = opener; inspectRef.current = i; setInspect(i)
   }
   function closeInspect(then?: () => void) {
@@ -565,7 +567,7 @@ export default function App() {
       <div className={`scene ${inScene ? '' : 'is-off'} ${arrive ? 'arrive' : ''}`} inert={!inScene || sheetShown}>
         <main className="track" ref={track} tabIndex={0} role="region" aria-roledescription="carousel"
           aria-label="The wardrobe. Use the left and right arrow keys to move between pieces.">
-          {ITEMS.map((p, i) => {
+          {ITEMS.slice(0, N).map((p, i) => {
             const on = i === index
             return (
               <section key={i} className="slide" data-i={i} role="group" aria-roledescription="slide" aria-label={`Item ${i + 1} of ${N}: ${p.name}`} aria-hidden={!on}>

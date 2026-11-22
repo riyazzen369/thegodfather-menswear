@@ -23,6 +23,12 @@ export type Item = {
      Without it the inspect view shows the shared plain back: the piece's own outline, mirrored, in a plain fabric tone. */
   back?: string
   details: { fit: string; madeToMeasure: string; delivery: string }
+  /* set for products that come from the live catalogue (Supabase); bundled items leave them empty */
+  slug?: string
+  collection?: 'premium' | 'attire'   // premium: vault + grid; attire: grid only
+  cut?: string                         // transparent cut-out for the flip view (else the photo itself)
+  blur?: string                        // tiny data-URL placeholder
+  description?: string
 }
 
 const base = import.meta.env.BASE_URL
@@ -135,3 +141,11 @@ export const TAILOR = {
   walk: `${base}walk/lorenzo-walk.webp`,
   curtain: `${base}tailor/curtain-tall.webp`
 }
+
+/* The live catalogue replaces ITEMS in place (premium first), so every module keeps the same array.
+   The vault shows the premium pieces (the first vaultCount()), the Attire Tour shows them all. */
+export const BUNDLED: Item[] = ITEMS.slice()
+export const vaultCount = () => { const n = ITEMS.findIndex(it => it.collection === 'attire'); return n < 0 ? ITEMS.length : n }
+const listeners: (() => void)[] = []
+export const onCatalogue = (f: () => void) => { listeners.push(f) }
+export const catalogueChanged = () => listeners.forEach(f => f())

@@ -4,7 +4,7 @@ import { MeshReflectorMaterial, PerformanceMonitor } from '@react-three/drei'
 import { EffectComposer, Bloom, Noise, Vignette, DepthOfField } from '@react-three/postprocessing'
 import { BlendFunction, type DepthOfFieldEffect } from 'postprocessing'
 import * as THREE from 'three'
-import { ITEMS, STORE, TAILOR } from '../data'
+import { ITEMS, STORE, TAILOR, vaultCount, onCatalogue } from '../data'
 import { rig, easeInOut, easeOut, clamp01, smooth, WALK_MS, walkTime } from '../rig'
 
 /* ---------------- world constants ---------------- */
@@ -15,7 +15,8 @@ const CAM_W = PZ + D    // camera z in the wardrobe
 const GATE_Z = 8        // logo doors
 const GATE_CAM = 12     // camera z at the gate
 const TAN = Math.tan((FOV / 2) * Math.PI / 180)
-const LAST = ITEMS.length
+let LAST = vaultCount()
+onCatalogue(() => { LAST = vaultCount() })
 
 const now = () => performance.now()
 /* monotone cubic through keyframes (Fritsch-Carlson), zero end tangents */
@@ -1133,7 +1134,7 @@ function Experience({ onFail, paused = false }: { onFail: (why: string) => void;
       <CameraRig path={path} />
       <Atmosphere path={path} />
       <Room low={low} res={T_.reflect} />
-      {ITEMS.map((_, i) => <Piece key={i} i={i} />)}
+      {ITEMS.slice(0, LAST).map((_, i) => <Piece key={i} i={i} />)}
       {(walkOn || rig.walkAt > 0) && <Walk low={low} path={path} />}
       <Dust />
       <Storefront />

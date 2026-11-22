@@ -18,7 +18,7 @@ export default function Inspect({ item, onClose, onDetails, enquireHref, price, 
   const card = useRef<HTMLDivElement>(null)
   const st = useRef({ a: 0, v: 0, target: 0, zoom: 1, drag: null as null | { id: number; x: number; a0: number; v: number; t0: number; hist: { x: number; t: number }[] }, pinch: null as null | { d0: number; z0: number }, pts: new Map<number, { x: number; y: number }>(), raf: 0, last: 0 })
   useEffect(() => { const id = requestAnimationFrame(() => { setShown(true); close.current?.focus({ preventScroll: true }) }); return () => cancelAnimationFrame(id) }, [])
-  const src = cutOf(item.images[0].src)
+  const src = item.cut ?? cutOf(item.images[0].src)
   const backSrc = item.back
   /* layout width (unaffected by the rotation), so the drag stays 1:1 as the card foreshortens */
   const W = () => card.current?.offsetWidth || 300
