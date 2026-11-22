@@ -591,7 +591,7 @@ export default function App() {
             <div className="copy">
               <h2 className="name line" style={{ '--i': 0 } as React.CSSProperties}>The wardrobe is private.</h2>
               <p className="fabric line" style={{ '--i': 1 } as React.CSSProperties}>Visit us or book a fitting.</p>
-              <p className="addr line" style={{ '--i': 2 } as React.CSSProperties}>{CONTACT.address}</p>
+              <p className="addr line" style={{ '--i': 2 } as React.CSSProperties}><a href={CONTACT.mapsUrl} target="_blank" rel="noopener">{CONTACT.address}</a></p>
               <div className="actions line" style={{ '--i': 3 } as React.CSSProperties}>
                 <a className="btn primary" href={wa('Hello, I would like to visit or book a fitting.')} target="_blank" rel="noopener" tabIndex={isFinal ? 0 : -1}>{WA_ICON}Enquire on WhatsApp</a>
                 <a className="btn ghost" href={`tel:${CONTACT.phone}`} tabIndex={isFinal ? 0 : -1}>{CALL_ICON}Call {CONTACT.phoneLabel}</a>
@@ -631,6 +631,10 @@ export default function App() {
                 <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M3 15.5c2.5 1.3 15.5 1.3 18 0" /><path d="M6.2 15.2 7.4 8.6c.3-1.6 2-1.9 3-1.2l1.6 1 1.6-1c1-.7 2.7-.4 3 1.2l1.2 6.6" /><path d="M7 12.6c3 .8 7 .8 10 0" /></svg>
                 <span>Ask the tailor</span>
               </button>
+              <a className="ask visit" id="visit" href={CONTACT.mapsUrl} target="_blank" rel="noopener" aria-label="Visit the store on Google Maps">
+                <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M12 21s-6.5-6.1-6.5-11a6.5 6.5 0 0 1 13 0c0 4.9-6.5 11-6.5 11z" /><circle cx="12" cy="10" r="2.3" /></svg>
+                <span>Visit the store</span>
+              </a>
               <a className="btn ghost book" id="book" href={BOOK_HREF} target="_blank" rel="noopener">Book a fitting</a>
             </div>
           </header>

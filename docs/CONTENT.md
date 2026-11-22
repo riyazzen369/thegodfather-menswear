@@ -6,9 +6,10 @@ Everything marked `PLACEHOLDER` in `src/data.ts` must be replaced before launch.
 
 | Item | Where | Notes |
 |---|---|---|
-| WhatsApp number | `CONTACT.whatsapp` in `src/data.ts` | digits only with country code, e.g. `919876543210`; used for every "Enquire on WhatsApp" and fitting request |
-| Phone | `CONTACT.phone`, `CONTACT.phoneLabel` | `tel:` link + display text |
-| Address | `CONTACT.address` | shown in Visit / private-visit panel; also update JSON-LD `address` in `index.html` |
+| WhatsApp number | `CONTACT.whatsapp` in `src/data.ts` | **set: `919092248282`** (digits only with country code); used for every "Enquire on WhatsApp" and fitting request |
+| Phone | `CONTACT.phone`, `CONTACT.phoneLabel` | **set: `+919092248282` / `+91 90922 48282`**; `tel:` link + display text |
+| Store location | `CONTACT.mapsUrl` | **set: https://maps.app.goo.gl/PU97R3Jrgu9qmCty8**; top-right "Visit the store" link (icon only at ≤560px) and the final-panel address link |
+| Address | `CONTACT.address` | currently "Get directions on Google Maps" (links to `mapsUrl`); replace with the street address when known, and add it to the JSON-LD `address` in `index.html` |
 | Booking URL | `CONTACT.bookingUrl` | "Book a fitting"; empty = WhatsApp fitting request |
 | Prices | `ITEMS[].price` (INR, `null` = on request) and `SAMPLE_PRICES` | all current prices are samples; set `SAMPLE_PRICES = false` to drop the "sample price" label |
 | Product photos | `public/img/<slug>-1..4.webp` | `-1` 3:4 hero ~768×1024 (vault + grid), `-2` detail, `-3` closer crop, `-4` store-window crop (optional). Then run `npm run images` |

@@ -550,3 +550,6 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
   .inspect-stage{grid-column:1/-1;grid-row:1}
 }
 @media (prefers-reduced-motion: reduce){ .inspect,.inspect.open,.inspect-flat img{transition:opacity .25s linear;transform:none} }
+.ask.visit{text-decoration:none}
+.addr a{color:inherit;text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(242,196,107,.5)}
+.addr a:hover{color:#f2c46b}

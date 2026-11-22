@@ -58,7 +58,7 @@ docs/                   DESIGN.md, ARCHITECTURE.md, DEPLOY.md, CONTENT.md
 
 Everything a shop owner changes is in `src/data.ts`:
 
-- `CONTACT`: `whatsapp` (digits with country code, e.g. `919876543210`), `phone`, `phoneLabel`, `address`, `bookingUrl` (empty = WhatsApp fitting request).
+- `CONTACT`: `whatsapp` (digits with country code; now `919092248282`), `phone` (`+919092248282`), `phoneLabel` (`+91 90922 48282`), `address` (the final-panel text, linked to Maps), `mapsUrl` (Google Maps location, used by the top-right **Visit the store** link, which is an icon only at ≤560px, and by the address), `bookingUrl` (empty = WhatsApp fitting request).
 - `SAMPLE_PRICES`: `true` shows "sample price" labels; set `false` once real prices are in.
 - `ITEMS`: one object per piece, in vault order:
 

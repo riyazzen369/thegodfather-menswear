@@ -3,10 +3,11 @@
    Everything marked PLACEHOLDER must be replaced before launch.
    ===================================================================== */
 export const CONTACT = {
-  whatsapp: '910000000000',             // PLACEHOLDER: country code + number, digits only
-  phone: '+910000000000',               // PLACEHOLDER: used for the call button
-  phoneLabel: '+91 00000 00000',        // PLACEHOLDER
-  address: 'Address to be added, City',  // PLACEHOLDER
+  whatsapp: '919092248282',             // country code + number, digits only
+  phone: '+919092248282',               // used for the call button
+  phoneLabel: '+91 90922 48282',
+  address: 'Get directions on Google Maps',
+  mapsUrl: 'https://maps.app.goo.gl/PU97R3Jrgu9qmCty8',
   bookingUrl: ''                         // PLACEHOLDER: booking page URL. Empty = WhatsApp fitting request
 }
 export const SAMPLE_PRICES = true        // set to false once real prices are in

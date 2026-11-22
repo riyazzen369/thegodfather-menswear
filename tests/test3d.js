@@ -107,7 +107,10 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   const small = await m.evaluate(() => [...document.querySelectorAll('.slide.is-active a, .slide.is-active button, .topbar a, .topbar button')].map(el => { const r=el.getBoundingClientRect(); return {t:(el.textContent.trim()||el.getAttribute('aria-label')).slice(0,20), w:Math.round(r.width), h:Math.round(r.height)}; }).filter(x => (x.w>0 || x.h>0) && (x.h<44 || x.w<44)));
   ok('touch targets >= 44px', small.length===0, JSON.stringify(small));
   const fpsM = await m.evaluate(() => window.__fps);
-  await m.locator(`.slide[data-i="${cur}"] .details`).tap(); await sleep(1400);
+  /* software GL runs at a few fps: wait for the rail to settle on the piece before tapping (no tap during a glide) */
+  const settle = async (pg) => { await pg.waitForFunction(() => { const r = window.__rig, a = document.querySelector('.slide.is-active'); return a && Math.abs(r.scrollP - Math.round(r.scrollP)) < 0.002 && +a.dataset.i === Math.round(r.scrollP) }, null, { timeout: 15000 }); await sleep(300); return pg.evaluate(() => +document.querySelector('.slide.is-active').dataset.i) };
+  const curS = await settle(m);
+  await m.locator(`.slide[data-i="${curS}"] .details`).tap(); await sleep(1400);
   ok('View details opens 3D inspect', await m.locator('.inspect').count()===1 && await m.locator('#inspect-wa').count()===1);
   await m.locator('#inspect-details').tap(); await sleep(1000);
   st = await state(m); ok('detail bottom sheet opens', st.sheet);
@@ -125,7 +128,7 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   for (let i=1;i<=8;i++){ await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:150,y:hb.y+12+i*30}]}); await sleep(20); }
   await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]}); await sleep(1000);
   st = await state(m); ok('swipe down closes sheet', !st.sheet);
-  await m.locator(`.slide[data-i="${cur}"] .details`).tap(); await sleep(1200);
+  await m.locator(`.slide[data-i="${await settle(m)}"] .details`).tap(); await sleep(1200);
   await m.locator('#inspect-details').tap(); await sleep(900);
   await m.keyboard.press('Escape'); await sleep(800);
   st = await state(m); ok('Esc closes sheet', !st.sheet);
