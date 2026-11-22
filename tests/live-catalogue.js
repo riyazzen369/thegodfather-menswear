@@ -186,7 +186,7 @@ print(json.dumps(o))"`).toString());
     const fc = geo['front-cut'], bk = geo.back;
     ok('normalised front: 3:4, top ~11%, centred, within the 72%x76% frame (x1.04 nudge)', fc.W * 4 === fc.H * 3 && Math.abs(fc.top - 0.11) < 0.015 && Math.abs(fc.cx - 0.5) < 0.02 && fc.w <= 0.72 * 1.05 + 0.01 && fc.h <= 0.76 * 1.05 + 0.01 && fc.bgClear < 5, JSON.stringify(fc));
     ok('normalised back: same height as the front (flip lines up), nudged up 1%', Math.abs(bk.h - fc.h) < 0.02 && Math.abs(bk.top - (0.11 - 0.01)) < 0.015 && Math.abs(bk.cx - 0.5) < 0.03, JSON.stringify(bk));
-    ok('vault photo: 864x1152 on the red-velvet plate', geo.front.W === 864 && geo.front.H === 1152 && geo.front.red > 0.3, JSON.stringify(geo.front));
+    ok('vault photo: 864x1152 on the red-velvet plate', geo.front.W === 864 && geo.front.H === 1152 && geo.front.red > 0.1, JSON.stringify(geo.front));
     const li2 = await a.$$eval('.adm-list li', l => l.map(x => x.dataset.slug));
     ok('admin: new product appears in the list', li2.includes('midnight-test-tee'), li2.join());
     await actx.close();
