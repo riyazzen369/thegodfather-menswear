@@ -114,11 +114,11 @@ export const LOGO_SET = [160, 240, 320, 800].map(w => `${base}brand/logo-${w}.we
 export const LOGO_GATE = `${base}brand/logo-800.webp`
 export const STORE = (w: number) => `${base}store/store-${w > 900 ? 1920 : 1280}.webp`
 
-/* Lorenzo's two ways in (Attire Tour first, as in the reference). */
+/* Lorenzo's two ways in (Attire Collection first, as in the reference). */
 export type Choice = { id: 'premium' | 'tour'; label: string; note: string }
 export const CHOICES: Choice[] = [
-  { id: 'tour', label: 'The Godfather Attire Tour', note: 'Suits · Shirts · Ties · Coats' },
-  { id: 'premium', label: 'The Godfather Premium Wardrobe', note: 'Private room · By invitation' }
+  { id: 'tour', label: 'The Godfather Attire Collection', note: 'Suits · Shirts · Ties · Coats' },
+  { id: 'premium', label: 'The Godfather Elite Wardrobe', note: 'Private room · By invitation' }
 ]
 /* Filter chips on the attire tour */
 export const CATEGORIES: { id: Category | 'all'; label: string }[] = [
@@ -133,7 +133,7 @@ export const HOST = { name: 'Lorenzo', role: 'Your host' }
 export function greeting(d = new Date()) {
   const h = d.getHours()
   const g = h >= 4 && h < 12 ? 'Good morning, sir.' : h >= 12 && h < 17 ? 'Good day, sir.' : 'Good evening, sir.'
-  return `${g} Shall I show you The Godfather Attire Tour, or The Godfather Premium Wardrobe?`
+  return `${g} Shall I show you The Godfather Attire Collection, or The Godfather Elite Wardrobe?`
 }
 export const TAILOR = {
   host: `${base}tailor/lorenzo.webp`,
@@ -143,7 +143,7 @@ export const TAILOR = {
 }
 
 /* The live catalogue replaces ITEMS in place (premium first), so every module keeps the same array.
-   The vault shows the premium pieces (the first vaultCount()), the Attire Tour shows them all. */
+   The vault shows the premium pieces (the first vaultCount()), the Attire Collection shows them all. */
 export const BUNDLED: Item[] = ITEMS.slice()
 /* premium pieces first (they are sorted before attire). 0 means the premium wardrobe is out of stock. */
 export const vaultCount = () => { const n = ITEMS.findIndex(it => it.collection === 'attire'); return n < 0 ? ITEMS.length : n }

@@ -117,7 +117,7 @@ export default function Inspect({ item, onClose, onDetails, enquireHref, price, 
         <p className="flip-face-label" aria-live="polite"><span className={face === 'front' ? 'on' : ''}>Front</span> / <span className={face === 'back' ? 'on' : ''}>Back</span></p>
       </div>
       <aside className="inspect-panel">
-        <p className="inspect-kicker">Private wardrobe · inspect</p>
+        <p className="inspect-kicker">Elite wardrobe · inspect</p>
         <h2 id="inspect-title">{item.name}</h2>
         <p className="inspect-tag">{item.tagline}</p>
         {price && <p className="inspect-price">{price}</p>}

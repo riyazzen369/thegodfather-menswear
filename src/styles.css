@@ -322,7 +322,7 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .typed .sf-choices li{opacity:1;transform:none}
 .sf-choice{width:100%;min-height:54px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;border-radius:3px;cursor:pointer;
   text-align:left;color:var(--bone);background:rgba(5,3,3,.6);border:1px solid rgba(232,223,207,.22);font:inherit;transition:background-color .25s, border-color .25s, box-shadow .25s}
-.sf-choice span{display:flex;flex-direction:column}
+.sf-choice > span{display:flex;flex-direction:column}
 .sf-choice b{font-weight:600;font-size:.95rem}
 .sf-choice small{font-size:.72rem;color:var(--muted);margin-top:2px}
 .sf-choice svg{width:20px;height:12px;flex:0 0 auto}
@@ -575,3 +575,29 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .oos p{margin:0 0 16px;color:var(--muted)}
 .grid-empty{max-width:1240px;margin:28px auto 0;color:var(--muted)}
 .grid-empty a{color:var(--warm);text-decoration:underline;text-underline-offset:3px}
+
+/* "Elite": sharp, sparkling gold (a crisp specular band sweeps across; tiny stars twinkle) */
+.elite{position:relative;display:inline;font-weight:inherit;text-shadow:none;
+  background:linear-gradient(100deg,#d9a526 0%,#f3c64d 16%,#fff8d6 26%,#ffd45a 36%,#e2aa2c 48%,#fff1b0 58%,#ffffff 61%,#f3c64d 70%,#d9a526 84%,#ffe38a 100%);
+  background-size:240% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 4px rgba(255,205,90,.6));animation:eliteSheen 3.4s linear infinite}
+.elite::before,.elite::after{content:'✦';position:absolute;color:#fff7d6;-webkit-text-fill-color:#fff7d6;font-size:.38em;line-height:1;pointer-events:none;opacity:0;
+  text-shadow:0 0 6px #ffd76a,0 0 12px rgba(255,200,70,.9);animation:eliteTwinkle 2.8s ease-in-out infinite}
+.elite::before{top:-.18em;left:12%}
+.elite::after{bottom:.02em;right:6%;font-size:.3em;animation-delay:1.3s}
+@keyframes eliteSheen{from{background-position:130% 0}to{background-position:-130% 0}}
+@keyframes eliteTwinkle{0%,70%,100%{opacity:0;transform:scale(.4) rotate(0)}82%{opacity:1;transform:scale(1.15) rotate(25deg)}}
+@media (prefers-reduced-motion: reduce){.elite{animation:none;background-position:30% 0}.elite::before,.elite::after{animation:none;opacity:.9;transform:none}}
+
+/* final slide: the big "explore the collection" call */
+.final .explore{display:flex;align-items:center;gap:clamp(14px,3vw,24px);max-width:min(560px,86vw);margin:6px 0 22px;padding:clamp(14px,2.4vw,20px) clamp(18px,3vw,28px);cursor:pointer;text-align:left;color:#fff1d2;
+  border:1px solid rgba(242,196,107,.65);border-radius:18px;background:linear-gradient(180deg,rgba(90,63,18,.92),rgba(48,33,8,.94));box-shadow:0 0 0 1px rgba(0,0,0,.4) inset,0 10px 40px rgba(0,0,0,.55),0 0 34px rgba(242,196,107,.22);transition:box-shadow .3s var(--ease),transform .3s var(--ease),border-color .3s var(--ease)}
+.final .explore:hover{box-shadow:0 0 0 1px rgba(0,0,0,.4) inset,0 10px 40px rgba(0,0,0,.55),0 0 52px rgba(242,196,107,.5);border-color:#f6d77a;transform:translateY(-2px)}
+.final .explore:focus-visible{outline:3px solid #f6d77a;outline-offset:4px}
+.final .explore-icon{flex:none;display:grid;place-items:center;width:clamp(62px,12vw,84px);height:clamp(62px,12vw,84px);border-radius:50%;border:1px solid rgba(242,196,107,.7);background:radial-gradient(circle at 35% 30%,rgba(255,236,170,.28),rgba(0,0,0,.25));color:#f6d77a}
+.final .explore-icon svg{width:54%;height:54%}
+.final .explore-text{flex:1;font-family:var(--serif);font-weight:600;font-size:clamp(1.1rem,3.6vw,1.6rem);line-height:1.15}
+.final .explore-text small{display:block;margin-bottom:4px;font-family:var(--sans);font-weight:500;font-size:.62em;letter-spacing:.22em;text-transform:uppercase;color:#d9bd7e}
+.final .explore-go{flex:none;width:26px;height:16px}
+.final .name{max-width:15em}
+.sf-choice.premium .elite{filter:drop-shadow(0 1px 1px rgba(70,0,0,.85)) drop-shadow(0 0 4px rgba(255,205,90,.6))}

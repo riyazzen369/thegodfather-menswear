@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { withElite } from './Elite'
 import { CONTACT, ITEMS, SAMPLE_PRICES, STORE, TAILOR, vaultCount, onCatalogue, type Item, type Choice } from './data'
 import Pic, { Mark, preloadPic } from './Pic'
 import Tailor from './Tailor'
@@ -596,12 +597,16 @@ export default function App(_: { rev?: number }) {
               </section>
             )
           })}
-          <section className="slide final" data-i={LAST} role="group" aria-roledescription="slide" aria-label="The wardrobe is private" aria-hidden={!isFinal}>
+          <section className="slide final" data-i={LAST} role="group" aria-roledescription="slide" aria-label="You explored the Elite Wardrobe" aria-hidden={!isFinal}>
             <div className="stage" aria-hidden="true"><Mark className="final-logo" glow="neon" sizes="min(70vw, 420px)" /></div>
             <div className="copy">
-              <h2 className="name line" style={{ '--i': 0 } as React.CSSProperties}>The wardrobe is private.</h2>
-              <p className="fabric line" style={{ '--i': 1 } as React.CSSProperties}>Visit us or book a fitting.</p>
-              <p className="addr line" style={{ '--i': 2 } as React.CSSProperties}><a href={CONTACT.mapsUrl} target="_blank" rel="noopener">{CONTACT.address}</a></p>
+              <h2 className="name line" id="final-title" style={{ '--i': 0 } as React.CSSProperties}>You explored our handpicked niche {withElite('Elite')} wearables.</h2>
+              <button type="button" className="explore line" id="explore-collection" style={{ '--i': 1 } as React.CSSProperties} tabIndex={isFinal ? 0 : -1} onClick={() => toGrid('all')}>
+                <span className="explore-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"><rect x="6" y="6" width="15" height="15" rx="2.5" /><rect x="27" y="6" width="15" height="15" rx="2.5" /><rect x="6" y="27" width="15" height="15" rx="2.5" /><rect x="27" y="27" width="15" height="15" rx="2.5" /></svg></span>
+                <span className="explore-text"><small>Next</small>Explore The Godfather Attire Collection</span>
+                <svg className="explore-go" viewBox="0 0 20 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M1 6h17M13 1l5 5-5 5" /></svg>
+              </button>
+              <p className="addr line" style={{ '--i': 2 } as React.CSSProperties}>Visit us or book a fitting · <a href={CONTACT.mapsUrl} target="_blank" rel="noopener">{CONTACT.address}</a></p>
               <div className="actions line" style={{ '--i': 3 } as React.CSSProperties}>
                 <a className="btn primary" href={wa('Hello, I would like to visit or book a fitting.')} target="_blank" rel="noopener" tabIndex={isFinal ? 0 : -1}>{WA_ICON}Enquire on WhatsApp</a>
                 <a className="btn ghost" href={`tel:${CONTACT.phone}`} tabIndex={isFinal ? 0 : -1}>{CALL_ICON}Call {CONTACT.phoneLabel}</a>
@@ -628,7 +633,7 @@ export default function App(_: { rev?: number }) {
       {outOfStock && (
         <div className="oos" id="out-of-stock" role="alertdialog" aria-modal="true" aria-labelledby="oos-title">
           <h2 id="oos-title">Out of stock</h2>
-          <p>The premium wardrobe has nothing on the rail right now.</p>
+          <p>The Elite Wardrobe has nothing on the rail right now.</p>
           <button type="button" className="btn gold" id="oos-close" autoFocus onClick={() => setOutOfStock(false)}>Back</button>
         </div>
       )}
@@ -638,7 +643,7 @@ export default function App(_: { rev?: number }) {
             <button className="home" id="home" aria-label="The Godfather. Return to the gate" onClick={toGate}><Mark sizes="(min-width:960px) 80px, 64px" /></button>
             {view === 'wardrobe' && <button className="back-shop" id="back-shop" type="button" onClick={callTailor}>
               <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M10 2 2 10l8 8" /></svg>Back to the shop</button>}
-            {view === 'wardrobe' && <p className="vault-label" aria-hidden="true">Private wardrobe · {pad(Math.min(N, Math.max(1, index + 1)))}</p>}
+            {view === 'wardrobe' && <p className="vault-label" aria-hidden="true">Elite wardrobe · {pad(Math.min(N, Math.max(1, index + 1)))}</p>}
             <div className="top-right">
               <button className="sound" id="sound" aria-pressed={sound} onClick={toggleSound}>
                 <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" /><path className="wave" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" /></svg>

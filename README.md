@@ -39,7 +39,7 @@ src/
   three/Experience.tsx  the whole 3D scene: gate, storefront, walk-in, golden vault, pieces, quality tiers, GPU watchdog
   Inspect.tsx           3D turntable inspect view (2.5D garment mesh from the cut-out photo)
   Tailor.tsx            Lorenzo the host: greeting, typed line, the two choices
-  Grid.tsx              Attire Tour grid with category filters
+  Grid.tsx              Attire Collection grid with category filters
   Pic.tsx               responsive <picture> with blur placeholder, preloading, logo mark
   Rain.tsx              canvas rain + splashes on the storefront
   rig.ts                shared mutable state between DOM and 3D (timings: TRANSITION_MS, WALK_MS)
@@ -64,7 +64,7 @@ Everything a shop owner changes is in `src/data.ts`:
 - `ITEMS`: one object per piece, in vault order:
 
 ```ts
-{ category: 'formal',                 // 'formal' | 'wedding' | 'statement' | 'shirts' (Attire Tour filters)
+{ category: 'formal',                 // 'formal' | 'wedding' | 'statement' | 'shirts' (Attire Collection filters)
   name: 'Three-piece suit', tagline: 'Cut for the long evening.',
   fabric: 'Navy Super 120s worsted wool…', price: 85000,          // INR, or null for "price on request"
   images: imgs('three-piece', 'Navy three-piece suit on a mannequin', true),  // slug, alt text, has store crop (-4)
@@ -85,11 +85,11 @@ See [docs/CONTENT.md](docs/CONTENT.md) for everything still marked PLACEHOLDER.
    - The interior lights flicker on, the neon sign glows and hums, rain falls in front and behind, drops splash on the wet floor, and the camera slowly dollies in with depth parallax.
    - Copy: "Night boutique · Bespoke tailoring", then "Dressed for the family business."
    - Lorenzo, your host, rises in at the bottom right (fedora, black pinstripe, red tie). He breathes, with rain falling in front of him.
-   - His line types out: "Good morning / Good day / Good evening, sir. Shall I show you The Godfather Attire Tour, or The Godfather Premium Wardrobe?" The greeting follows the visitor's local time.
-   - Two buttons: The Godfather Attire Tour (dark) and The Godfather Premium Wardrobe (red).
+   - His line types out: "Good morning / Good day / Good evening, sir. Shall I show you The Godfather Attire Collection, or The Godfather Elite Wardrobe?" The greeting follows the visitor's local time.
+   - Two buttons: The Godfather Attire Collection (dark) and The Godfather Elite Wardrobe (red).
    - Skip or Esc shows the full line and the buttons at once.
    - The top nav (Collections, Tailoring, Visit, Private wardrobe) shows on desktop.
-4. **Premium Wardrobe.** One continuous walk of about 6.4s, led by Lorenzo, with Skip and Esc:
+4. **Elite Wardrobe.** One continuous walk of about 6.4s, led by Lorenzo, with Skip and Esc:
    - The storefront rushes into the glass doors and hands over to the 3D camera inside the shop.
    - The camera walks a red runner between racks of suits under spotlights, glancing at the racks with a light head-bob.
    - Lorenzo (seen from behind, cat in his arm) walks ahead; the hidden wardrobe at the end of the shop opens and the camera takes a quick brass stairwell down (about 3.4s in total).
@@ -104,7 +104,7 @@ See [docs/CONTENT.md](docs/CONTENT.md) for everything still marked PLACEHOLDER.
    - the piece in focus is lit, sways slowly and tilts with the pointer, while its neighbours sit back and dim
    - counter, Enquire on WhatsApp, View details, and the private visit panel at the end
    - The product pictures are HTML `<picture>` elements kept on their 3D anchors every frame, not WebGL textures. They are AVIF/WebP at 512w and 864w, with a 12×16 blurred placeholder that crossfades to the photo; the piece in focus and its two neighbours are loaded.
-5. **Attire Tour.** A grid of all pieces: 2 columns at 390px, 3 from 760px, 4 from 1100px.
+5. **Attire Collection.** A grid of all pieces: 2 columns at 390px, 3 from 760px, 4 from 1100px.
    - Filter chips: All, Suits and formal, Shirts, Wedding, Statement pieces.
    - A card opens the same detail sheet.
    - "Enter the premium wardrobe" goes down to the vault.

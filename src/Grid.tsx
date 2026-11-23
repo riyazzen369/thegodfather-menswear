@@ -1,3 +1,4 @@
+import { withElite } from './Elite'
 import Pic from './Pic'
 import { useEffect, useState } from 'react'
 import { CATEGORIES, FOLLOW_URL, ITEMS, SAMPLE_PRICES } from './data'
@@ -18,7 +19,7 @@ export default function Grid({ onOpen, onEnter, inert, initialCat = 'all' }: {
   return (
     <main className="grid-page" id="grid" inert={inert} aria-labelledby="grid-title">
       <header className="grid-head">
-        <h1 id="grid-title" tabIndex={-1}>The attire tour</h1>
+        <h1 id="grid-title" tabIndex={-1}>The Godfather Attire Collection</h1>
         <p>Every piece in the house. Tap one for the details.</p>
         <div className="chips" role="group" aria-label="Filter by category">
           {CATEGORIES.map(c => (
@@ -43,7 +44,7 @@ export default function Grid({ onOpen, onEnter, inert, initialCat = 'all' }: {
       </ul>
       <div className="grid-foot">
         <p>Prefer to see them one at a time, in the light?</p>
-        <button type="button" className="btn gold" id="enter-vault" onClick={onEnter}>Enter the premium wardrobe</button>
+        <button type="button" className="btn gold" id="enter-vault" onClick={onEnter}>Enter the {withElite('Elite')} Wardrobe</button>
       </div>
     </main>
   )

@@ -112,7 +112,7 @@ function Catalogue({ sb }: { sb: SupabaseClient }) {
           {rows.map(r => (
             <li key={r.id} className={r.published ? '' : 'draft'} data-slug={r.slug}>
               <span className="thumb" style={r.blur ? { backgroundImage: `url(${r.blur})` } : undefined}>{r.front_path && <img src={publicUrl(r.front_path, r.updated_at)} alt="" loading="lazy" />}</span>
-              <span className="meta"><b>{r.name}</b><span>{r.collection === 'premium' ? 'Premium · vault' : 'Attire'} · {CATEGORIES.find(c => c.id === r.category)?.label ?? r.category}{r.price_from != null ? ` · from ${inr.format(r.price_from)}` : ''}{r.back_path ? ' · back photo' : ''}</span></span>
+              <span className="meta"><b>{r.name}</b><span>{r.collection === 'premium' ? 'Elite · vault' : 'Attire'} · {CATEGORIES.find(c => c.id === r.category)?.label ?? r.category}{r.price_from != null ? ` · from ${inr.format(r.price_from)}` : ''}{r.back_path ? ' · back photo' : ''}</span></span>
               <label className="pub"><input type="checkbox" checked={r.published} onChange={() => togglePub(r)} /> {r.published ? 'Live' : 'Hidden'}</label>
               <button type="button" className="ghost" onClick={() => setEdit(r)}>Edit</button>
             </li>
@@ -266,7 +266,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
           <label>Web name (slug)<input id="f-slug" value={d.slug} onChange={e => { slugTouched.current = true; set('slug', slugify(e.target.value)) }} disabled={!isNew} /></label>
           <div className="row">
             <label>Collection<select id="f-collection" value={d.collection} onChange={e => set('collection', e.target.value as Row['collection'])}>
-              <option value="premium">Premium (vault + attire tour)</option><option value="attire">Attire (attire tour only)</option></select></label>
+              <option value="premium">Elite (vault + attire collection)</option><option value="attire">Attire (attire collection only)</option></select></label>
             <label>Category<select id="f-category" value={d.category} onChange={e => set('category', e.target.value as Row['category'])}>
               {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
           </div>

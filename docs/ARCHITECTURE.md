@@ -10,7 +10,7 @@ src/main.tsx ── <App/>
            ├─ vault DOM      (.track > .slide > <Pic/> pictures + captions + actions)
            ├─ <Inspect/>     (lazy; own small Canvas turntable, or a CSS-tilt fallback)
            ├─ detail sheet   (#sheet, gallery, specs, WhatsApp)
-           ├─ <Grid/>        (Attire Tour)
+           ├─ <Grid/>        (Attire Collection)
            └─ <Rain/>        (2D canvas rain layers)
 ```
 
@@ -22,7 +22,7 @@ src/main.tsx ── <App/>
 | `three/Experience.tsx` | `CameraRig` (gate, storefront, walk spline, vault anchors, steps the rail first), `Gate`, `Storefront`, `ScreenFX`, `Walk` (shop interior, racks, hidden wardrobe, stairwell, golden vault doors, Lorenzo sprite leader), `Atmosphere`, `Room` (vault: brass, marble reflector, arches), `Piece` (plinths, spotlights), `Dust`, `DomSync` (puts DOM pictures on 3D anchors each frame), `Focus` (DOF), `Health` (GPU watchdog), `Stats`, tiers via `PerformanceMonitor` |
 | `Inspect.tsx` | **Drag-to-flip** product view, CSS 3D only (`.flip-card` with two `backface-visibility: hidden` faces, one composited layer; no WebGL, so it's the same in 3D and 2D modes). A horizontal drag turns the card 1:1: one card *layout* width (`offsetWidth`, unaffected by the rotation) = 180°. On release a critically damped spring (ω 13) settles on the nearest face. A fling (velocity over the last 100 ms > 0.4 px/ms, or a flick under 260 ms and over 36 px) flips to the next face. There's no idle motion. Pinch (two pointers) and wheel zoom 1–2.4×. The `Front / Back` indicator is polite-live; the "Show back / Show front" button and ←/→ keys flip. Under reduced motion it swaps instantly. The front is the cut-out `public/img/cut/<slug>-1.webp`; the back is `item.back` if set, else the **shared plain back** (`.flip-plain`: the piece's own cut-out as a CSS mask, mirrored, filled with one plain dark fabric tone and a soft centre seam). Test hook: `window.__inspectFlip()` → `{ a, face }` |
 | `Tailor.tsx` | Lorenzo host layer: phases `in` → `out`/`lead`/`walk`, typed line by local time, choice buttons |
-| `Grid.tsx` | Attire Tour grid and filter chips |
+| `Grid.tsx` | Attire Collection grid and filter chips |
 | `Pic.tsx` | `<picture>` with AVIF/WebP srcset, blur placeholder crossfade, `preloadPic`, `Mark` (logo) |
 | `Rain.tsx` | Canvas rain + splashes, dt-clamped, paused off-screen |
 | `rig.ts` | Shared state and timings: `view`, `index`, `scrollP`, `walkAt`, `descentAt`, `railStep`, `glStepAt`, `fps`, freeze flags; `walkTime()` |
@@ -39,7 +39,7 @@ src/main.tsx ── <App/>
 
 ```
 gate ──tap──▶ transition (2.5s) ──▶ tailor (Lorenzo)
-                                       ├─ Attire Tour ──▶ grid ──"Enter the premium wardrobe"──▶ wardrobe (descent 2.4s)
+                                       ├─ Attire Collection ──▶ grid ──"Enter the premium wardrobe"──▶ wardrobe (descent 2.4s)
                                        └─ Premium ──▶ walk (6.4s, Skip/Esc) ──▶ wardrobe (vault)
 wardrobe ──View details / tap focused──▶ inspect ──Full details──▶ sheet
         └─ Back to the shop ──▶ tailor          inspect/sheet ──Esc──▶ wardrobe (focus returns)
@@ -67,7 +67,7 @@ WhatsApp links are built as `https://wa.me/<whatsapp>?text=<prefilled enquiry ab
 
 `ITEMS` is one shared array. When `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are set at build time, `src/main.tsx` first applies the catalogue
 this browser cached last (localStorage `gf-catalogue-v1`), then `src/supa.ts` reads published rows (anon key, 2.5 s timeout) and swaps `ITEMS` in place
-(premium first, then attire, each by `sort`). The vault uses the first `vaultCount()` items (premium); the Attire Tour and detail sheet use all of them.
+(premium first, then attire, each by `sort`). The vault uses the first `vaultCount()` items (premium); the Attire Collection and detail sheet use all of them.
 Module-level counts in `App.tsx` and `three/Experience.tsx` re-read via `onCatalogue()`. A change that adds, removes or reorders pieces remounts `<App>`
 (key bump); an edit to existing pieces just re-renders. Updates arrive through a realtime subscription on `catalogue_rev` (bumped by a trigger on every
 product change) plus a re-read when the tab becomes visible. If the DB is unreachable nothing changes: cached copy or bundled `src/data.ts`.
