@@ -67,7 +67,7 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   await m.waitForSelector('#tailor', {timeout:6000}); await sleep(450);
   let ti = await tailorInfo(m);
   ok('mobile: storefront + Lorenzo appear after the entry, wardrobe hidden', !!ti && ti.sceneHidden && ti.skip, JSON.stringify(ti && {f:ti.focus}));
-  ok('time-of-day greeting with both options (full text for screen readers)', ti && /^Good (morning|day|evening), sir\. Shall I show you The Godfather Attire Tour, or The Godfather Premium Wardrobe\?$/.test(ti.line), ti && ti.line);
+  ok('time-of-day greeting with both options (full text for screen readers)', ti && /^Good (morning|day|evening), sir\. Shall I show you The Godfather Attire Collection, or The Godfather Elite Wardrobe\?$/.test(ti.line), ti && ti.line);
   ok('dialogue types out (not all at once)', ti && ti.typed < ti.line.length, ti && ti.typed+'/'+ti.line.length);
   await m.waitForSelector('.tailor.typed', {timeout:12000}); await sleep(900);
   ti = await tailorInfo(m);
@@ -139,8 +139,12 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   await sleep(1200);
   st = await state(m);
   const fin = await m.evaluate(() => document.querySelector('.slide.final').innerText);
-  ok('final private panel with WhatsApp and call', st.act[0]===12 && /The wardrobe is private\./.test(fin) && /Call/.test(fin) && /WhatsApp/.test(fin), JSON.stringify(st.act));
+  ok('final slide: explored Elite wearables, explore-collection button, WhatsApp and call', st.act[0]===12 && /You explored our handpicked niche Elite wearables\./.test(fin) && /Explore The Godfather Attire Collection/.test(fin) && /Call/.test(fin) && /WhatsApp/.test(fin), JSON.stringify(st.act));
   await m.screenshot({path:SH+'07-final-panel-mobile.png'});
+  await m.click('#explore-collection'); await sleep(600);
+  st = await state(m); const gh = await m.evaluate(() => document.getElementById('grid-title')?.innerText);
+  ok('explore button on the final slide opens the Attire Collection grid', st.grid && gh === 'The Godfather Attire Collection', JSON.stringify({grid:st.grid, gh}));
+  await m.screenshot({path:SH+'07b-final-to-collection.png'});
   await m.reload({waitUntil:'load'}); await sleep(1500);
   ti = await tailorInfo(m); st = await state(m);
   ok('returning visitor lands on the shopkeeper choice (gate and entry skipped)', !!ti && !st.gate, JSON.stringify({gate:st.gate}));

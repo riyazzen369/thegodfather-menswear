@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { withElite } from './Elite'
 import { CHOICES, HOST, STORE, TAILOR, greeting, type Choice } from './data'
 import Rain from './Rain'
 import { Mark } from './Pic'
@@ -95,14 +96,14 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
           <button type="button" id="nav-collections" onClick={() => onNav('collections')}>Collections</button>
           <button type="button" id="nav-tailoring" onClick={() => onNav('tailoring')}>Tailoring</button>
           <button type="button" id="nav-visit" onClick={() => onNav('visit')}>Visit</button>
-          <button type="button" id="nav-private" onClick={() => onNav('private')}>Private wardrobe</button>
+          <button type="button" id="nav-private" onClick={() => onNav('private')}>Elite wardrobe</button>
         </nav>
       </header>
 
       <div className="sf-hero">
         <p className="sf-kicker"><i aria-hidden="true" />Night boutique · Bespoke tailoring</p>
         <h1 className="sf-title">Dressed for the <em>family</em> business.</h1>
-        <p className="sf-sub">Suits cut to measure, shirts with nerve, and a private wardrobe for those who know the password.</p>
+        <p className="sf-sub">Suits cut to measure, shirts with nerve, and an Elite wardrobe for those who know the password.</p>
       </div>
 
       <div className="sf-panel">
@@ -115,7 +116,7 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
           {CHOICES.map(c => (
             <li key={c.id}>
               <button type="button" className={`sf-choice ${c.id}`} id={`choice-${c.id}`} onClick={() => onChoose(c)}>
-                <span><b>{c.label}</b><small>{c.note}</small></span>
+                <span><b>{withElite(c.label)}</b><small>{c.note}</small></span>
                 <svg viewBox="0 0 20 12" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M1 6h17M13 1l5 5-5 5" /></svg>
               </button>
             </li>

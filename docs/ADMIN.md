@@ -8,7 +8,7 @@ The site can read its products from a Supabase database instead of `src/data.ts`
 1. Open `/admin/` and sign in with the email and password you were given. There is no sign-up; only accounts listed in `public.admins` can change anything.
 2. **Products** lists everything, live and hidden. The checkbox on each row publishes or hides it immediately.
 3. **Add product** / **Edit**: name, collection, category, price ("Price from", empty = on request), order (lower first), tagline, fabric, description, fit / made to measure / delivery.
-   - **Premium** pieces appear in the vault (Premium Wardrobe) *and* the Attire Tour. **Attire** pieces appear in the Attire Tour only.
+   - **Elite** pieces appear in the vault (Elite Wardrobe) *and* the Attire Collection. **Attire** pieces appear in the Attire Collection only.
    - **Front photo** (required) and **Back photo** (optional): drop any photo, even a phone shot of a T-shirt on a bed. In the browser
      (`src/admin/normalize.ts`) it is: background removed (`@imgly/background-removal`, `isnet_quint8`, loaded only on `/admin/`, model ~40 MB
      fetched from IMG.LY's CDN the first time; if that fails, a plain-backdrop colour key is used and the note says so), cropped to the garment,
