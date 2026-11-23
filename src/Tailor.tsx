@@ -69,10 +69,10 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
       style={{ '--t-host': T.host + 's', '--t-panel': T.panel + 's' } as React.CSSProperties}>
       <div className="sf-cam" aria-hidden="true">
         <div className="sf-plate" ref={plate}>
-          <img className="sf-photo" src={store} alt="" decoding="async" />
+          <img className="sf-photo" src={store} alt="" decoding="async" fetchPriority="high" />
           <img className="sf-neon glow" src={store} alt="" decoding="async" />
           <img className="sf-neon" src={store} alt="" decoding="async" />
-          <img className="sf-wet" src={store} alt="" decoding="async" />
+          <img className="sf-wet" src={store} alt="" decoding="async" fetchPriority="high" />
           <div className="sf-door" />
         </div>
         <Rain layer="back" floor={0.78} paused={reduced} />
