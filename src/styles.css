@@ -601,3 +601,17 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .final .explore-go{flex:none;width:26px;height:16px}
 .final .name{max-width:15em}
 .sf-choice.premium .elite{filter:drop-shadow(0 1px 1px rgba(70,0,0,.85)) drop-shadow(0 0 4px rgba(255,205,90,.6))}
+
+/* final slide: fit any screen height (no overlap with the top bar, no dead space at the bottom), whole group centred */
+.slide.final{justify-content:center;gap:clamp(6px,1.6vh,18px);padding-top:calc(var(--sat,0px) + 88px);padding-bottom:calc(var(--sab,0px) + 84px)}
+.final .stage{flex:none;width:100%;height:calc(min(56vw,340px,31vh) * .78 + 8px)}
+.final .final-logo{width:min(56vw,340px,31vh)}
+.final .copy{padding-bottom:0}
+.final .name{font-size:clamp(1.5rem,min(7vw,5.6vh),3.5rem);margin-bottom:clamp(6px,1.4vh,14px)}
+.final .explore{justify-content:center;margin:clamp(2px,1vh,10px) 0 clamp(10px,2vh,20px);padding:clamp(10px,1.8vh,18px) clamp(16px,2.4vw,26px)}
+.final .explore-icon{width:clamp(44px,min(11vw,8vh),74px);height:clamp(44px,min(11vw,8vh),74px)}
+.final .explore-text{flex:0 1 auto;font-size:clamp(.95rem,min(3.4vw,2.9vh),1.45rem)}
+.final .addr{margin-bottom:clamp(10px,2vh,20px)}
+@media (min-width:960px){ .slide.final{padding:92px 8vw 88px} }
+
+@media (max-height:700px){ .final .addr{font-size:.8rem;margin-bottom:8px} .final .btn{min-height:42px;padding-top:8px;padding-bottom:8px} .slide.final{padding-top:calc(var(--sat,0px) + 78px);padding-bottom:calc(var(--sab,0px) + 70px)} }
