@@ -174,8 +174,11 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   const tb = await m.evaluate(() => ['#home','#ask','#book'].map(q => { const e=document.querySelector(q); if(!e) return q+':none'; const r=e.getBoundingClientRect(); return r.width>=44&&r.height>=44&&r.top>=0 ? 'ok' : q+':'+r.width+'x'+r.height; }));
   ok('grid top bar: logo, Ask the tailor, Book a fitting (44px)', tb.every(x=>x==='ok'), tb.join());
   await m.evaluate(() => document.querySelector('#grid').scrollTo(0, 99999)); await sleep(500);
-  await m.locator('#enter-vault').tap(); await sleep(1800);
-  await m.locator('#walk-skip').tap(); await sleep(1400);
+  await m.locator('#enter-vault').tap();
+  /* Skip exists for a few seconds of the walk: wait for it instead of guessing the timing; if the walk already ended on its own, skipping is not needed */
+  await m.waitForSelector('#walk-skip', { timeout: 8000 }).catch(() => {});
+  await m.locator('#walk-skip').tap({ timeout: 3000 }).catch(() => {});
+  await settle(m, 0); /* the vault is open on piece 1 */
   st = await state(m); ok('grid links into the premium wardrobe (piece 1)', st.vault && !st.grid && st.act[0]===0 && st.snapped===0, JSON.stringify({act:st.act, mode:st.mode}));
   const askVis = await m.evaluate(() => { const b=document.querySelector('#ask'); const r=b.getBoundingClientRect(); return r.width>=44 && r.height>=44 && r.top>=0 && b.getAttribute('aria-label'); });
   ok('top bar has Ask the tailor (44px)', askVis==='Ask the tailor', String(askVis));

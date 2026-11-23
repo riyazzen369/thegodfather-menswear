@@ -22,7 +22,9 @@ let ROWS = [
 ];
 const FILES = { 'tuxedo/front.webp': 'tuxedo-1.webp', 'tuxedo/front-cut.webp': 'cut/tuxedo-1.webp', 'camel-coat/front.webp': 'camel-overcoat-1.webp',
   'camel-coat/back.webp': 'cut/velvet-blazer-1.webp', 'velvet/front.webp': 'velvet-blazer-1.webp', 'shirt/front.webp': 'shirt-tie-1.webp' };
-let reads = [], dbDown = false;
+let reads = [], dbDown = false, adminsEmpty = false;
+/* PostgREST filters the mock must honour: slug=eq.<x> and published=eq.true (the admin's pre-save slug check relies on it) */
+const filterRows = (url, rows) => { const q = new globalThis.URL(url).searchParams; let out = rows; const s = q.get('slug'); if (s && s.startsWith('eq.')) out = out.filter(x => x.slug === s.slice(3)); if (q.get('published') === 'eq.true') out = out.filter(x => x.published); return out; };
 async function mockSite(ctx) {
   await ctx.route(`${MOCK}/rest/v1/products*`, r => {
     if (dbDown) return r.abort('connectionrefused');
@@ -142,10 +144,17 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
     await actx.route(`${MOCK}/rest/v1/products*`, r => {
       const m = r.request().method();
       if (m === 'OPTIONS') return r.fulfill({ status: 200, headers: cors });
-      if (m === 'GET') return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(ROWS) });
+      if (m === 'GET') return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(filterRows(r.request().url(), ROWS)) });
       const body = r.request().postDataJSON(); A.writes.push({ m, body, auth: r.request().headers()['authorization'] });
       if (m === 'POST') ROWS.push({ ...row({ slug: body.slug, name: body.name }), ...body, id: body.slug });
       r.fulfill({ status: 201, headers: cors, contentType: 'application/json', body: '[]' });
+    });
+    /* the allow-list: the admin page asks whether the signed-in user is in it (user u1 is, unless adminsEmpty) */
+    await actx.route(`${MOCK}/rest/v1/admins*`, r => {
+      const m = r.request().method();
+      if (m === 'OPTIONS') return r.fulfill({ status: 200, headers: cors });
+      A.adminReads = (A.adminReads || 0) + 1;
+      r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(adminsEmpty ? [] : [{ user_id: 'u1' }]) });
     });
     await actx.route(`${MOCK}/storage/v1/object/**`, async r => {
       const m = r.request().method(), u = r.request().url();
@@ -209,6 +218,11 @@ print(json.dumps(o))`}).toString());
     ok('vault photo: 864x1152 on the red-velvet plate', geo.front.W === 864 && geo.front.H === 1152 && geo.front.red > 0.1, JSON.stringify(geo.front));
     const li2 = await a.$$eval('.adm-list li', l => l.map(x => x.dataset.slug));
     ok('admin: new product appears in the list', li2.includes('midnight-test-tee'), li2.join());
+    ok('admin: the allow-list is checked after sign-in', (A.adminReads || 0) >= 1, String(A.adminReads));
+    /* a signed-in account that is not on the allow-list gets a clear message and no catalogue */
+    adminsEmpty = true; await a.reload({ waitUntil: 'load' });
+    await a.waitForSelector('#not-admin', { timeout: 15000 }).catch(() => {});
+    ok('admin: signed in but not an admin shows the notice and no product list', !!(await a.$('#not-admin')) && !(await a.$('.adm-list li')), (await a.innerText('body')).slice(0, 120));
     await actx.close();
     ok('no page errors', errs.length === 0, errs.slice(0, 5).join(' | '));
   } finally { await browser.close(); srv.kill(); }
