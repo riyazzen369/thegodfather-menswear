@@ -6,15 +6,16 @@
 import { build } from 'vite'
 import { readFileSync, existsSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
 import { createClient } from '@supabase/supabase-js'
 
 const { SUPABASE_URL: url, SUPABASE_SERVICE_ROLE_KEY: key } = process.env
 if (!url || !key) { console.error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY'); process.exit(1) }
-const root = new URL('..', import.meta.url).pathname
+const root = fileURLToPath(new URL('..', import.meta.url)) // not .pathname: that breaks on Windows (/E:/...)
 const out = mkdtempSync(join(tmpdir(), 'gf-seed-'))
 await build({ root, logLevel: 'silent', configFile: false, build: { outDir: out, ssr: join(root, 'src/data.ts'), rollupOptions: { output: { format: 'es', entryFileNames: 'data.mjs' } } } })
-const { ITEMS } = await import(join(out, 'data.mjs'))
+const { ITEMS } = await import(pathToFileURL(join(out, 'data.mjs')).href)
 const lq = readFileSync(join(root, 'src/lqip.ts'), 'utf8')
 const LQIP = Object.fromEntries([...lq.matchAll(/"([^"]+)": "([^"]+)"/g)].map(m => [m[1], m[2]]))
 
@@ -29,13 +30,15 @@ for (const it of ITEMS) {
   const slug = it.images[0].src.match(/img\/([^/]+)-1\.webp$/)[1]
   const file = n => join(root, 'public/img', `${slug}-${n}.webp`)
   const front = await up(file(1), `${slug}/front.webp`)
+  const smallLocal = join(root, 'public/img/r', `${slug}-1-512.webp`) /* 512 px copy for phones */
+  const front512 = existsSync(smallLocal) ? await up(smallLocal, `${slug}/front-512.webp`) : null
   const cutLocal = join(root, 'public/img/cut', `${slug}-1.webp`)
   const cut = existsSync(cutLocal) ? await up(cutLocal, `${slug}/front-cut.webp`) : null
   const extra = []
   for (const [n, img] of it.images.slice(1).entries()) { const m = img.src.match(/-(\d)\.webp$/); extra.push({ path: await up(file(m[1]), `${slug}/extra-${n + 1}.webp`), alt: img.alt }) }
   const row = {
     slug, name: it.name, collection: 'premium', category: it.category, price_from: it.price, tagline: it.tagline,
-    description: '', fabric: it.fabric, details: it.details, colours: it.colours, front_path: front, front_cut_path: cut,
+    description: '', fabric: it.fabric, details: front512 ? { ...it.details, front512 } : it.details, colours: it.colours, front_path: front, front_cut_path: cut,
     back_path: null, extra_paths: extra, blur: LQIP[`${slug}-1`] ?? null, sort, published: true
   }
   sort += 10

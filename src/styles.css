@@ -568,3 +568,10 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .flip-face-label{position:absolute;left:50%;bottom:calc(var(--sab,0px) + 10px);transform:translateX(-50%);margin:0;font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(239,230,220,.5)}
 .flip-face-label .on{color:#f2c46b}
 @media (prefers-reduced-motion: reduce){ .flip-card{transition:none} }
+
+/* empty catalogue */
+.oos{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;width:min(88vw,380px);padding:26px 24px;text-align:center;background:var(--ink2);border:1px solid rgba(242,196,107,.5);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.oos h2{margin:0 0 8px;font-family:var(--serif);font-weight:700;letter-spacing:.04em}
+.oos p{margin:0 0 16px;color:var(--muted)}
+.grid-empty{max-width:1240px;margin:28px auto 0;color:var(--muted)}
+.grid-empty a{color:var(--warm);text-decoration:underline;text-underline-offset:3px}

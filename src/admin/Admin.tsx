@@ -13,6 +13,16 @@ const blank = (sort: number): Draft => ({
   back_path: null, blur: null, nudge: {}, src_paths: {}, sort, published: false
 })
 const slugify = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+/* a 512 px wide WebP copy of the vault photo, so the grid and vault cards on phones don't download the 864 px one */
+async function smallVariant(photo: Blob): Promise<Blob | null> {
+  try {
+    const bmp = await createImageBitmap(photo), w = 512, h = Math.round(bmp.height * w / bmp.width)
+    const c = document.createElement('canvas'); c.width = w; c.height = h
+    c.getContext('2d')!.drawImage(bmp, 0, 0, w, h)
+    return await new Promise<Blob | null>(res => c.toBlob(b => res(b), 'image/webp', 0.82))
+  } catch { return null }
+}
+const MAX_PRICE = 99_999_999, MAX_SORT = 9999
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 
 export default function Admin() {
@@ -28,10 +38,21 @@ export default function Admin() {
     })
     return () => off()
   }, [])
+  /* RLS lets an admin read the allow-list (and nobody else), so an empty answer means "signed in, not an admin" */
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
+  const uid = session?.user.id
+  useEffect(() => {
+    if (!sb || !uid) { setIsAdmin(null); return }
+    let dead = false
+    sb.from('admins').select('user_id').eq('user_id', uid).maybeSingle().then(({ data, error }) => { if (!dead) setIsAdmin(error ? null : !!data) })
+    return () => { dead = true }
+  }, [sb, uid])
   if (!liveEnabled) return <Shell><p className="note">This build has no database configured (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY). See docs/ADMIN.md.</p></Shell>
   if (session === undefined || !sb) return <Shell><p className="note">Loading…</p></Shell>
   if (!session) return <Shell><Login sb={sb} /></Shell>
-  return <Shell user={session.user.email} onOut={() => sb.auth.signOut()}><Catalogue sb={sb} /></Shell>
+  return <Shell user={session.user.email} onOut={() => sb.auth.signOut()}>{isAdmin === false
+    ? <p className="note" id="not-admin">This account is signed in but is not a catalogue admin, so it cannot change anything. Ask the store owner to add it.</p>
+    : <Catalogue sb={sb} />}</Shell>
 }
 
 function Shell({ children, user, onOut }: { children: React.ReactNode; user?: string; onOut?: () => void }) {
@@ -110,6 +131,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
   const [dropBack, setDropBack] = useState(false)
   const [method, setMethod] = useState('')
   const isNew = !draft.id
+  const slugTouched = useRef(false)
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD(x => ({ ...x, [k]: v }))
   const setDet = (k: keyof Row['details'], v: string) => setD(x => ({ ...x, details: { ...x.details, [k]: v } }))
   const facesRef = useRef(faces); facesRef.current = faces
@@ -164,20 +186,30 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
     if (!slug) return setErr('The name needs at least one letter or number.')
     if (!d.front_path && !fp) return setErr('Add a front photo.')
     setErr('')
+    const uploaded: string[] = [] /* files added by THIS save: removed again if anything fails, so no orphans are left in the public bucket */
     try {
+      if (!draft.id) { /* new product: check the slug first, before any upload */
+        setBusy('Checking…')
+        const { data: clash, error: ce } = await sb.from('products').select('id').eq('slug', slug).maybeSingle()
+        if (ce) throw ce
+        if (clash) return setErr('Another product already uses that web name (slug). Change it and save again.')
+      }
       const stamp = Date.now().toString(36), old: string[] = []
       const upload = async (blob: Blob, name: string) => {
         setBusy(`Uploading ${name}…`)
         const path = `${slug}/${name}-${stamp}.webp`
         const { error } = await sb.storage.from('products').upload(path, blob, { contentType: 'image/webp', cacheControl: '31536000', upsert: false })
         if (error) throw error
+        uploaded.push(path)
         return path
       }
       const row: Draft = { ...d, slug, name: d.name.trim(), nudge: { ...(d.nudge || {}) }, src_paths: { ...(d.src_paths || {}) } }
       const F = faces.front, B = faces.back
       if (F?.placed) {
         old.push(...[d.front_path, d.front_cut_path].filter(Boolean) as string[])
-        row.front_path = await upload(F.placed.photo!, 'front'); row.front_cut_path = await upload(F.placed.cut, 'front-cut'); row.blur = F.placed.blur
+        row.front_path = await upload(F.placed.photo!, 'front');
+        { const sm = await smallVariant(F.placed.photo!); const prev = (d.details as any)?.front512; if (prev) old.push(prev); row.details = { ...row.details, ...(sm ? { front512: await upload(sm, 'front-512') } : {}) } as Row['details']; if (!sm) delete (row.details as any).front512 }
+        row.front_cut_path = await upload(F.placed.cut, 'front-cut'); row.blur = F.placed.blur
         row.nudge = { ...row.nudge, front: F.nudge, frontBox: F.placed.box } as Row['nudge']
         if (F.fresh) { if (d.src_paths?.front) old.push(d.src_paths.front); row.src_paths!.front = await upload(await rawBlob(F.cut), 'front-src') }
       }
@@ -193,7 +225,11 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
       if (error) throw error
       if (old.length) await sb.storage.from('products').remove(old)
       onDone()
-    } catch (e) { setErr((e as Error).message.includes('duplicate key') ? 'Another product already uses that web name (slug).' : (e as Error).message) }
+    } catch (e) {
+      if (uploaded.length) await sb.storage.from('products').remove(uploaded).catch(() => {})
+      const m = (e as Error).message || 'Something went wrong.'
+      setErr(m.includes('duplicate key') ? 'Another product already uses that web name (slug).' : /exceeds|out of range|integer/i.test(m) ? 'One of the numbers is too large. Check Price and Order.' : /row-level security|not allowed|403/i.test(m) ? 'This account is not allowed to change the catalogue.' : m)
+    }
     finally { setBusy('') }
   }
   const del = async () => {
@@ -226,8 +262,8 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
       <div className="adm-bar"><h1>{isNew ? 'New product' : d.name || 'Edit product'}</h1><button type="button" className="ghost" onClick={onDone} disabled={!!busy}>Back to list</button></div>
       <div className="adm-cols">
         <div className="adm-form">
-          <label>Name<input id="f-name" value={d.name} maxLength={80} onChange={e => { set('name', e.target.value); if (isNew) set('slug', slugify(e.target.value)) }} /></label>
-          <label>Web name (slug)<input id="f-slug" value={d.slug} onChange={e => set('slug', slugify(e.target.value))} disabled={!isNew} /></label>
+          <label>Name<input id="f-name" value={d.name} maxLength={80} onChange={e => { set('name', e.target.value); if (isNew && !slugTouched.current) set('slug', slugify(e.target.value)) }} /></label>
+          <label>Web name (slug)<input id="f-slug" value={d.slug} onChange={e => { slugTouched.current = true; set('slug', slugify(e.target.value)) }} disabled={!isNew} /></label>
           <div className="row">
             <label>Collection<select id="f-collection" value={d.collection} onChange={e => set('collection', e.target.value as Row['collection'])}>
               <option value="premium">Premium (vault + attire tour)</option><option value="attire">Attire (attire tour only)</option></select></label>
@@ -235,8 +271,8 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
               {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
           </div>
           <div className="row">
-            <label>Price from (₹)<input id="f-price" inputMode="numeric" value={d.price_from ?? ''} onChange={e => { const v = e.target.value.replace(/\D/g, ''); set('price_from', v ? Number(v) : null) }} placeholder="Leave empty: price on request" /></label>
-            <label>Order<input id="f-sort" inputMode="numeric" value={d.sort} onChange={e => set('sort', Number(e.target.value.replace(/\D/g, '') || 0))} /></label>
+            <label>Price from (₹)<input id="f-price" inputMode="numeric" value={d.price_from ?? ''} onChange={e => { const v = e.target.value.replace(/\D/g, ''); set('price_from', v ? Math.min(MAX_PRICE, Number(v)) : null) }} placeholder="Leave empty: price on request" /></label>
+            <label>Order<input id="f-sort" inputMode="numeric" value={d.sort} onChange={e => set('sort', Math.min(MAX_SORT, Number(e.target.value.replace(/\D/g, '') || 0)))} /></label>
           </div>
           <label>Tagline<input id="f-tagline" value={d.tagline} maxLength={90} onChange={e => set('tagline', e.target.value)} /></label>
           <label>Fabric and make<textarea id="f-fabric" rows={2} value={d.fabric} onChange={e => set('fabric', e.target.value)} /></label>

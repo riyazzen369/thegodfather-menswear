@@ -51,7 +51,7 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
   const graph = [...seen].map(f => fs.readFileSync(path.join(AS, f), 'latin1')).join('');
   ok(`public site bundle has no background-removal / onnx code (${[...seen].join(' ')})`, seen.size >= 3 && !/onnxruntime|removeBackground|isnet_quint8/.test(graph));
   ok('build: anon key + URL embedded, no service-role key', dist.includes(ANON) && dist.includes(MOCK) && !/service_role|SERVICE_ROLE/.test(dist));
-  const srv = spawn('npx', ['vite', 'preview', '--outDir', 'dist-live', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
+  const srv = spawn('npx', ['vite', 'preview', '--outDir', 'dist-live', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' });
   for (let i = 0; i < 60; i++) { try { await fetch(URL); break } catch { await sleep(250) } }
   const browser = await chromium.launch({ args: ARGS });
   const errs = [];
@@ -67,7 +67,7 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
       const pics = await p.evaluate(() => [...document.querySelectorAll('#grid .card img')].map(i => ({ s: i.currentSrc || i.src, ok: i.complete && i.naturalWidth > 0 })));
       ok(`${tag}: grid photos come from Supabase Storage and load`, pics.length === 4 && pics.every(x => x.s.includes('/storage/v1/object/public/products/')), JSON.stringify(pics.slice(0, 2)));
       if (tag === 'mobile') await p.screenshot({ path: SH + '30-live-grid-mobile.png' });
-      await p.locator('#grid .card[data-i="3"]').click(); await sleep(1000);
+      await p.locator('#grid .card[data-i="3"]').click(); await p.waitForSelector('#sheet.open', { timeout: 8000 }).catch(() => {}); await sleep(300);
       const sh = await p.evaluate(() => ({ open: document.querySelector('#sheet')?.classList.contains('open'), t: document.querySelector('#sheet-title')?.textContent, txt: document.querySelector('#sheet')?.innerText || '' }));
       ok(`${tag}: detail sheet uses DB data`, sh.open && sh.t === 'Live Shirt' && /Test fabric\./.test(sh.txt) && /Two weeks\./.test(sh.txt), JSON.stringify(sh).slice(0, 200));
       await p.keyboard.press('Escape'); await sleep(800);
@@ -104,6 +104,24 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
       await toTour(p); await sleep(3000); const n = await names(p); const src = await p.evaluate(() => window.__catalogue && window.__catalogue.source);
       ok('DB unreachable: falls back to the 12 bundled pieces', n.length === 12 && !n.some(x => x.startsWith('Live')) && src === 'fallback', n.length + ' ' + src); await ctx.close(); }
     dbDown = false;
+
+    // empty catalogue (owner decision): nothing published -> "Out of stock" on the premium wardrobe and a Follow link on the attire tour, never the bundled pieces
+    { const keep = ROWS; const ctx = await newCtx({ viewport: { width: 1280, height: 800 } }); const p = await ctx.newPage(); watch(p, 'empty');
+      await toTour(p); let n0 = await names(p);
+      ok('empty: before, the grid shows the live pieces', n0.length === 4 && n0.every(x => x.startsWith('Live')), n0.join());
+      ROWS = [];  /* the owner unpublishes everything; the tab regains focus (stands in for the realtime ping) */
+      await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await p.waitForSelector('#grid-empty', { timeout: 15000 }).catch(() => {});
+      const e = await p.evaluate(() => ({ empty: !!document.querySelector('#grid-empty'), follow: document.querySelector('#follow-link')?.textContent, href: document.querySelector('#follow-link')?.getAttribute('href'), cards: document.querySelectorAll('#grid .card').length, src: window.__catalogue?.source, cache: localStorage.getItem('gf-catalogue-v1') }));
+      ok('empty: the grid is cleared (no live and no bundled pieces) and shows the Follow link', e.empty && e.cards === 0 && e.follow === 'Follow' && !!e.href, JSON.stringify(e));
+      ok('empty: source is "empty" and the saved copy is cleared', e.src === 'empty' && e.cache === null, JSON.stringify(e));
+      await p.goto(URL, { waitUntil: 'load' }); await p.waitForSelector('#choice-premium', { timeout: 30000 }); await sleep(500);
+      await p.locator('#choice-premium').click(); await p.waitForSelector('#out-of-stock', { timeout: 15000 }).catch(() => {});
+      const o = await p.evaluate(() => ({ txt: document.querySelector('#out-of-stock')?.textContent || '', app: document.querySelector('.app')?.className || '' }));
+      ok('empty: the premium wardrobe says Out of stock and does not open the vault', /Out of stock/.test(o.txt) && !/view-wardrobe|view-walk/.test(o.app), JSON.stringify(o));
+      await p.locator('#oos-close').click(); await sleep(300);
+      ok('empty: Back closes the notice', (await p.$('#out-of-stock')) === null);
+      ROWS = keep; await ctx.close(); }
 
     // ---------- admin ----------
     const actx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -174,15 +192,15 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
     // geometry of the normalised images (decoded with Pillow)
     const dir = path.join(__dirname, 'out'); fs.mkdirSync(dir, { recursive: true });
     for (const n of ['front', 'front-cut', 'back']) fs.writeFileSync(path.join(dir, `tee-${n}.webp`), byName(n).webpBuf);
-    const geo = JSON.parse(execSync(`python3 -c "
+    const geo = JSON.parse(require('child_process').execFileSync(process.platform === 'win32' ? 'python' : 'python3', ['-'], { input: `
 import json,numpy as np;from PIL import Image
 o={}
 for n in ['front-cut','back','front']:
-  im=Image.open('${dir}/tee-'+n+'.webp');W,H=im.size
+  im=Image.open('${dir.split(path.sep).join('/')}/tee-'+n+'.webp');W,H=im.size
   if n=='front': a=np.array(im.convert('RGB')).astype(int);o[n]={'W':W,'H':H,'red':float((a[...,0]>a[...,2]+20).mean())};continue
   al=np.array(im.convert('RGBA'))[...,3];ys,xs=np.where(al>60)
   o[n]={'W':W,'H':H,'top':ys.min()/H,'bot':ys.max()/H,'cx':(xs.min()+xs.max())/2/W,'w':(xs.max()-xs.min())/W,'h':(ys.max()-ys.min())/H,'bgClear':float((al[:40].mean()+al[-40:].mean())/2)}
-print(json.dumps(o))"`).toString());
+print(json.dumps(o))`}).toString());
     const fc = geo['front-cut'], bk = geo.back;
     ok('normalised front: 3:4, top ~11%, centred, within the 72%x76% frame (x1.04 nudge)', fc.W * 4 === fc.H * 3 && Math.abs(fc.top - 0.11) < 0.015 && Math.abs(fc.cx - 0.5) < 0.02 && fc.w <= 0.72 * 1.05 + 0.01 && fc.h <= 0.76 * 1.05 + 0.01 && fc.bgClear < 5, JSON.stringify(fc));
     ok('normalised back: same height as the front (flip lines up), nudged up 1%', Math.abs(bk.h - fc.h) < 0.02 && Math.abs(bk.top - (0.11 - 0.01)) < 0.015 && Math.abs(bk.cx - 0.5) < 0.03, JSON.stringify(bk));

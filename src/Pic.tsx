@@ -11,7 +11,11 @@ const parts = (src: string) => {
   const [, dir, name] = m
   return { dir, name, small: !/-4$/.test(name) }   // -4 crops are already small
 }
+/* live photos: full URL -> its 512 px WebP copy (registered when the catalogue loads; rows without one keep the single image) */
+export const REMOTE_SMALL = new Map<string, string>()
 export const sources = (src: string) => {
+  const sm = REMOTE_SMALL.get(src)
+  if (sm) return { avif: '', webp: `${sm} 512w, ${src} 864w` }
   const p = parts(src)
   if (!p || !p.small) return { avif: '', webp: '' }
   return {

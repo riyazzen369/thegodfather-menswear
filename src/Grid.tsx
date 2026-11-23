@@ -1,6 +1,6 @@
 import Pic from './Pic'
 import { useState } from 'react'
-import { CATEGORIES, ITEMS, SAMPLE_PRICES } from './data'
+import { CATEGORIES, FOLLOW_URL, ITEMS, SAMPLE_PRICES } from './data'
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 
@@ -24,6 +24,9 @@ export default function Grid({ onOpen, onEnter, inert, initialCat = 'all' }: {
           ))}
         </div>
       </header>
+      {ITEMS.length === 0 && (
+        <p className="grid-empty" id="grid-empty" role="status">Nothing is on the rack right now. <a id="follow-link" href={FOLLOW_URL} target="_blank" rel="noopener noreferrer">Follow</a> us to hear first.</p>
+      )}
       <ul className="cards" aria-live="polite">
         {list.map(({ it, i }) => (
           <li key={i}>

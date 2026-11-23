@@ -4,7 +4,7 @@
 # custom domain's DNS points at GitHub; set PUBLISH_CNAME=1 to publish it (see docs/DEPLOY.md).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-npx vite build
+npm run build   # tsc -b + vite build: type errors must not ship
 G=${GHP:-/tmp/ghp}
 if [ ! -d "$G/.git" ] && [ ! -f "$G/.git" ]; then
   git fetch -q origin gh-pages 2>/dev/null || true

@@ -51,6 +51,8 @@ export default function App(_: { rev?: number }) {
   const [arrive, setArrive] = useState(false)
   /* start the 3D scene once the gate's logo has faded in, so loading it can't stutter the first second */
   const [glMount, setGlMount] = useState(false)
+  /* the premium wardrobe has no published pieces: say so instead of opening an empty vault */
+  const [outOfStock, setOutOfStock] = useState(false)
   useEffect(() => { const id = window.setTimeout(() => setGlMount(true), viewRef.current === 'gate' ? 900 : 0); return () => clearTimeout(id) }, [])
   const [view, setViewState] = useState<'gate' | 'transition' | 'tailor' | 'walk' | 'wardrobe' | 'grid'>(() => store.get('gf-entered') ? 'tailor' : 'gate')
   const viewRef = useRef(view)
@@ -335,6 +337,7 @@ export default function App(_: { rev?: number }) {
   /* the shopkeeper's choices */
   const leaveTailor = useCallback((to: 'premium' | 'tour' | 'skip' | 'tailoring' | 'visit') => {
     if (viewRef.current !== 'tailor' || tailorRef.current !== 'in') return
+    if (to === 'premium' && vaultCount() === 0) { setOutOfStock(true); return }
     if (to === 'premium' && !reduced && is3D) {
       /* one continuous first-person walk: through the doors, past the racks, the hidden wardrobe, down into the vault */
       setTailorPhase('walk'); startWalk()
@@ -362,6 +365,7 @@ export default function App(_: { rev?: number }) {
     leaveTailor(n === 'collections' ? 'tour' : n === 'private' ? 'premium' : n), [leaveTailor])
   /* from the attire tour straight down to the vault */
   const gridToVault = useCallback(() => {
+    if (vaultCount() === 0) { setOutOfStock(true); return }
     if (sheetRef.current !== null) closeSheet(true)
     setFadeBlack(true)
     window.setTimeout(() => { if (is3D && !reduced) startWalk(); else openVault(0, true); setFadeBlack(false) }, reduced ? 150 : 380)
@@ -465,7 +469,7 @@ export default function App(_: { rev?: number }) {
   /* ---------- detail sheet ---------- */
   const sheetEl = useRef<HTMLElement>(null), gallery = useRef<HTMLDivElement>(null), sheetBody = useRef<HTMLDivElement>(null)
   const [gIdx, setGIdx] = useState(0)
-  const closeT = useRef(0)
+  const closeT = useRef(0), openRaf = useRef<number[]>([]), openedAt = useRef(0)
   const openInspect = (i: number, opener: HTMLElement | null) => {
     if (i < 0 || i >= ITEMS.length || inspectRef.current !== null) return
     inspectFrom.current = opener; inspectRef.current = i; setInspect(i)
@@ -480,16 +484,20 @@ export default function App(_: { rev?: number }) {
     clearTimeout(closeT.current)
     returnFocus.current = opener
     sheetRef.current = i; setSheet(i); setGIdx(0)
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    openedAt.current = performance.now()
+    openRaf.current.forEach(cancelAnimationFrame)
+    openRaf.current = [requestAnimationFrame(() => { openRaf.current = [requestAnimationFrame(() => {
+      if (sheetRef.current !== i) return /* closed again before it finished opening: stay closed (else the page stays inert) */
       setSheetShown(true)
       if (gallery.current) gallery.current.scrollLeft = 0
       if (sheetBody.current) sheetBody.current.scrollTop = 0
       setTimeout(() => (document.getElementById('close') as HTMLElement)?.focus({ preventScroll: true }), 60)
-    }))
+    })] })]
   }
   function closeSheet(instant = false) {
     if (sheetRef.current === null) return
     sheetRef.current = null
+    openRaf.current.forEach(cancelAnimationFrame); openRaf.current = []
     setSheetShown(false)
     if (sheetEl.current) { sheetEl.current.classList.remove('dragging'); sheetEl.current.style.transform = '' }
     if (instant) setSheet(null); else closeT.current = window.setTimeout(() => setSheet(null), reduced ? 320 : 560)
@@ -617,6 +625,13 @@ export default function App(_: { rev?: number }) {
           onClose={() => closeInspect()}
           onDetails={() => { const i = inspect, op = inspectFrom.current; closeInspect(() => { if (op) openSheet(i, op) }) }} />
       </Suspense>}
+      {outOfStock && (
+        <div className="oos" id="out-of-stock" role="alertdialog" aria-modal="true" aria-labelledby="oos-title">
+          <h2 id="oos-title">Out of stock</h2>
+          <p>The premium wardrobe has nothing on the rail right now.</p>
+          <button type="button" className="btn gold" id="oos-close" autoFocus onClick={() => setOutOfStock(false)}>Back</button>
+        </div>
+      )}
       {view === 'grid' && <Grid key={gridCat} initialCat={gridCat} onOpen={openSheet} onEnter={gridToVault} inert={sheetShown} />}
       {(view === 'wardrobe' || view === 'grid') && (
         <header className="topbar" inert={sheetShown}>
@@ -645,7 +660,7 @@ export default function App(_: { rev?: number }) {
       <div className="sr-only" aria-live="polite" aria-atomic="true" ref={live} id="live" />
 
       {/* SCREEN 4: PIECE DETAIL */}
-      {it && <div className={`backdrop ${sheetShown ? 'open' : ''}`} onClick={() => closeSheet()} />}
+      {it && <div className={`backdrop ${sheetShown ? 'open' : ''}`} onClick={() => { if (performance.now() - openedAt.current > 300) closeSheet() }} />}
       {it && (
         <aside ref={sheetEl} className={`sheet ${sheetShown ? 'open' : ''}`} id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
           <div className="grab" id="grab" onPointerDown={grabDown} onPointerMove={grabMove} onPointerUp={grabUp} onPointerCancel={grabUp}>

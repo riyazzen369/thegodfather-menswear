@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 /* Create (or reset) a catalogue admin: a confirmed Supabase Auth user + a row in public.admins.
-   Prints nothing secret; writes the credentials to the file you name (mode 600).
+   Prints nothing secret; writes the credentials to a file outside the repo (default: your temp folder; a path inside the repo is refused).
      SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/create-admin.mjs owner@example.com [out-file] */
 import { createClient } from '@supabase/supabase-js'
 import { randomBytes } from 'node:crypto'
 import { writeFileSync, chmodSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve, relative, isAbsolute } from 'node:path'
+import { fileURLToPath } from 'node:url'
 const { SUPABASE_URL: url, SUPABASE_SERVICE_ROLE_KEY: key } = process.env
-const [email, out = 'ADMIN-CREDENTIALS.txt'] = process.argv.slice(2)
+const [email, outArg] = process.argv.slice(2)
+const out = resolve(outArg ?? join(tmpdir(), 'ADMIN-CREDENTIALS-godfather.txt'))
+const rel = relative(fileURLToPath(new URL('..', import.meta.url)), out)
+if (rel && !rel.startsWith('..') && !isAbsolute(rel)) { console.error('Refusing to write credentials inside the repo: ' + out + '. Pick a path outside it.'); process.exit(1) }
 if (!url || !key || !email) { console.error('usage: SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/create-admin.mjs <email> [out-file]'); process.exit(1) }
 const sb = createClient(url, key, { auth: { persistSession: false } })
 const password = randomBytes(15).toString('base64url')

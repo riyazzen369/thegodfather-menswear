@@ -2,6 +2,8 @@
 // slow drag follows 1:1 and lands on the back, a fast fling flips back, the button and arrow keys flip, no page errors.
 // SHOTS=1 saves mobile front/back of item ONLY (default 10, the bandhgala) to shots/.
 const { chromium } = require('playwright'); const path = require('path'), fs = require('fs'); const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* software GL runs at a few fps: wait until the rail has come to rest on piece n instead of a fixed sleep */
+const restOn = (p, n) => p.waitForFunction(n => { const r = window.__rig; return Math.round(r.scrollP) === n && Math.abs(r.scrollP - n) < 0.001 }, n, { timeout: 15000 });
 const URL = process.env.URL || 'http://localhost:8795/'; const OUT = path.join(__dirname, '..', 'shots'); fs.mkdirSync(OUT, { recursive: true });
 (async () => {
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -18,7 +20,7 @@ const URL = process.env.URL || 'http://localhost:8795/'; const OUT = path.join(_
     }
     const F = () => p.evaluate(() => window.__inspectFlip())
     for (let i = 0; i < n; i++) {
-      for (let k = 0; k < 20 && await p.evaluate(() => window.__rig.index) !== i; k++) { await p.keyboard.press(await p.evaluate(() => window.__rig.index) < i ? 'ArrowRight' : 'ArrowLeft'); await sleep(700) }
+      for (let k = 0; k < 20 && await p.evaluate(() => window.__rig.index) !== i; k++) { const dir = await p.evaluate(() => window.__rig.index) < i ? 1 : -1; const from = await p.evaluate(() => Math.round(window.__rig.scrollP)); await p.keyboard.press(dir > 0 ? 'ArrowRight' : 'ArrowLeft'); await restOn(p, from + dir) }
       await p.waitForFunction(() => { const r = window.__rig; return Math.abs(r.scrollP - Math.round(r.scrollP)) < 0.002 }, null, { timeout: 15000 })
       await p.locator('.slide.is-active .details').click({ force: true }); await p.waitForSelector('.inspect.ready', { timeout: 15000 }); await sleep(700)
       const card = await p.locator('.flip-card').boundingBox(), y = card.y + card.height * 0.5, cx = card.x + card.width / 2
@@ -41,7 +43,7 @@ const URL = process.env.URL || 'http://localhost:8795/'; const OUT = path.join(_
       await p.locator('#inspect-flip').click(); await sleep(1200); f = await F()
       const lbl = await p.locator('#inspect-flip').innerText()
       ok(`${W} item ${i}: button flips (label updates)`, f.face === 'back' && /front/i.test(lbl), `${f.face} "${lbl}"`)
-      await p.keyboard.press('ArrowLeft'); await sleep(1200); f = await F()
+      await p.keyboard.press('ArrowLeft'); await sleep(1200); f = await F() /* in the inspect view the arrow flips the card, the rail does not move */
       ok(`${W} item ${i}: arrow key flips`, f.face === 'front', f.face)
       await p.keyboard.press('Escape'); await sleep(700)
     }

@@ -2,7 +2,7 @@
    Without VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY, or when the database is unreachable, the bundled ITEMS are used. */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BUNDLED, ITEMS, type Item, type Category } from './data'
-import { REMOTE_LQIP } from './Pic'
+import { REMOTE_LQIP, REMOTE_SMALL } from './Pic'
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -33,32 +33,50 @@ export function toItem(r: Row): Item {
   }
 }
 const order = (a: Row, b: Row) => (a.collection === b.collection ? 0 : a.collection === 'premium' ? -1 : 1) || a.sort - b.sort || a.name.localeCompare(b.name)
-export async function fetchRows(timeoutMs = 2500): Promise<Row[] | null> {
-  const c = await supa(); if (!c) return null
-  const q = c.from('products').select('*').eq('published', true)
-  const r = await Promise.race([q, new Promise<null>(res => setTimeout(() => res(null), timeoutMs))])
-  if (!r || (r as any).error) return null
-  const rows = ((r as any).data as Row[]).filter(x => x.front_path)
-  return rows.length ? rows.sort(order) : null
+/* One plain REST read with the anon key (no supabase-js needed, so the store's first paint never loads the 217 kB client).
+   RLS only returns published rows. ok=false means the request failed or timed out (not the same as an empty catalogue). */
+export type Fetched = { ok: boolean; rows: Row[] }
+async function readOnce(timeoutMs: number): Promise<Fetched> {
+  if (!liveEnabled) return { ok: false, rows: [] }
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs)
+  try {
+    const r = await fetch(`${URL_}/rest/v1/products?select=*&published=eq.true`, { headers: { apikey: KEY!, Authorization: `Bearer ${KEY}` }, signal: ctl.signal })
+    if (!r.ok) return { ok: false, rows: [] }
+    const data = await r.json()
+    if (!Array.isArray(data)) return { ok: false, rows: [] }
+    return { ok: true, rows: (data as Row[]).filter(x => x.front_path).sort(order) }
+  } catch { return { ok: false, rows: [] } } finally { clearTimeout(t) }
 }
-/* swap the catalogue in place; returns 'same' | 'content' (same pieces, new data) | 'structure' (pieces added/removed/moved) */
-export function apply(rows: Row[] | null): 'same' | 'content' | 'structure' {
+/* concurrent callers share one request (start-up, realtime and tab-focus refetches used to double up) */
+let inflight: Promise<Fetched> | null = null
+export const fetchCatalogue = (timeoutMs = 8000): Promise<Fetched> => inflight ??= readOnce(timeoutMs).finally(() => { inflight = null })
+const keyOf = (l: Item[]) => l.map(i => `${i.slug ?? i.name}:${i.collection ?? 'premium'}`).join('|')
+/* what would apply() do? 'same' | 'content' (same pieces, new data) | 'structure' (pieces added/removed/moved). Does not change anything. */
+export function peek(rows: Row[] | null): 'same' | 'content' | 'structure' {
   const next = rows ? rows.map(toItem) : BUNDLED
-  const key = (l: Item[]) => l.map(i => `${i.slug ?? i.name}:${i.collection ?? 'premium'}`).join('|')
-  const sig = (l: Item[]) => JSON.stringify(l)
-  if (sig(next) === sig(ITEMS)) return 'same'
-  const structural = key(next) !== key(ITEMS)
+  if (JSON.stringify(next) === JSON.stringify(ITEMS)) return 'same'
+  return keyOf(next) !== keyOf(ITEMS) ? 'structure' : 'content'
+}
+/* swap the catalogue in place; returns the same answer as peek() */
+export function apply(rows: Row[] | null): 'same' | 'content' | 'structure' {
+  const kind = peek(rows); if (kind === 'same') return kind
+  const next = rows ? rows.map(toItem) : BUNDLED
   ITEMS.splice(0, ITEMS.length, ...next)
   for (const it of next) if (it.blur && it.images[0]) REMOTE_LQIP.set(it.images[0].src, it.blur)
-  return structural ? 'structure' : 'content'
+  for (const r of rows ?? []) { const sm = (r.details as { front512?: string } | null)?.front512; if (sm && r.front_path) REMOTE_SMALL.set(publicUrl(r.front_path, r.updated_at)!, publicUrl(sm, r.updated_at)!) }
+  return kind
 }
-export async function subscribe(onRows: (rows: Row[] | null) => void) {
-  const c = await supa(); if (!c) return () => {}
-  let t = 0
-  const refetch = () => { clearTimeout(t); t = window.setTimeout(async () => onRows(await fetchRows(6000)), 250) }
-  const ch = c.channel('products-live').on('postgres_changes', { event: '*', schema: 'public', table: 'catalogue_rev' }, refetch).subscribe()
-  /* safety net: re-read when the tab comes back */
-  const vis = () => { if (document.visibilityState === 'visible') refetch() }
-  document.addEventListener('visibilitychange', vis)
-  return () => { c.removeChannel(ch); document.removeEventListener('visibilitychange', vis) }
+/* realtime ping: calls onChange when the revision row changes and once the channel is SUBSCRIBED (closes the gap between the first read and the subscription).
+   Loads supabase-js, so call it after the first interaction, not at start-up. Cleanup is safe to call at any time, even before it resolves. */
+export function subscribe(onChange: () => void): () => void {
+  let dead = false, undo = () => {}
+  supa().then(c => {
+    if (!c || dead) return
+    const ch = c.channel('products-live-' + Math.random().toString(36).slice(2, 8))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalogue_rev' }, onChange)
+      .subscribe(status => { if (status === 'SUBSCRIBED') onChange() })
+    undo = () => { c.removeChannel(ch) }
+    if (dead) undo()
+  })
+  return () => { dead = true; undo() }
 }

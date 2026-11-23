@@ -14,9 +14,11 @@ Read first: `docs/ADMIN.md`, `docs/ARCHITECTURE.md`, `supabase/migrations/202611
 1. Create a FREE Supabase project at supabase.com (region Mumbai ap-south-1). Copy URL, anon key, service_role key.
 2. Supabase SQL editor: run `supabase/migrations/20261123000000_products.sql`.
 3. Auth settings: turn OFF public sign-ups.
-4. Locally, create `.env.local` (never commit):
-   VITE_SUPABASE_URL=...  VITE_SUPABASE_ANON_KEY=...  SUPABASE_SERVICE_ROLE_KEY=...
-   Then `npm run seed` and `npm run admin:create` (sets the client admin login).
+4. Locally, create `.env.local` (never commit) with ONLY the public values:
+   VITE_SUPABASE_URL=...  VITE_SUPABASE_ANON_KEY=...
+   The service-role key never goes in a file: set it in your shell for the two scripts only
+   (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` environment variables, see docs/ADMIN.md), then run
+   `npm run seed` and `npm run admin:create -- <email>` (credentials go to your temp folder, not the repo).
 5. Create `.env.production.local` with only the VITE_ URL + anon key.
 6. Re-run `npm test` (one flaky check: "vertical wheel gesture = one piece") and `npm run test:live`
    (backdrop threshold was loosened, re-run to confirm).

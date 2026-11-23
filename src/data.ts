@@ -145,7 +145,10 @@ export const TAILOR = {
 /* The live catalogue replaces ITEMS in place (premium first), so every module keeps the same array.
    The vault shows the premium pieces (the first vaultCount()), the Attire Tour shows them all. */
 export const BUNDLED: Item[] = ITEMS.slice()
+/* premium pieces first (they are sorted before attire). 0 means the premium wardrobe is out of stock. */
 export const vaultCount = () => { const n = ITEMS.findIndex(it => it.collection === 'attire'); return n < 0 ? ITEMS.length : n }
+/* Where the "Follow" link on an empty attire tour goes. [CLIENT TO CONFIRM]: the real profile URL is missing; change only this line. */
+export const FOLLOW_URL = '#'
 const listeners: (() => void)[] = []
 export const onCatalogue = (f: () => void) => { listeners.push(f) }
 export const catalogueChanged = () => listeners.forEach(f => f())

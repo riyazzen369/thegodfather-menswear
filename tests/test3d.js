@@ -5,6 +5,9 @@ const F = '?force3d';   // swiftshader runs at ~5 fps; keep the 3D path under te
 const SH = require('path').join(__dirname, '..', 'shots') + '/'; require('fs').mkdirSync(SH, { recursive: true });
 const results = []; const ok = (name, pass, info='') => { results.push({name, pass, info}); console.log((pass?'PASS ':'FAIL ')+name+(info?' — '+info:'')); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* software GL runs at a few fps: after every gesture wait for the rail to come to rest on a piece, instead of a fixed sleep */
+const settle = async (pg, to) => { await pg.waitForFunction((to) => { const r = window.__rig, a = document.querySelector('.slide.is-active'); return a && (to === undefined || to === null || Math.round(r.scrollP) === to) && Math.abs(r.scrollP - Math.round(r.scrollP)) < 0.001 && +a.dataset.i === Math.round(r.scrollP) }, to, { timeout: 15000 }); await sleep(300); return pg.evaluate(() => +document.querySelector('.slide.is-active').dataset.i) };
+
 const ARGS = ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'];
 const tailorInfo = page => page.evaluate(() => {
   const t = document.querySelector('#tailor'); if (!t) return null;
@@ -91,15 +94,15 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   const gmm = await garment(m); ok('mobile: piece 1 picture visible', gmm && gmm.loaded && +gmm.op > 0.95, JSON.stringify(gmm));
   const cdp = await mctx.newCDPSession(m);
   for (let k=1;k<=3;k++){
-    await swipe(cdp, 330, 90); await sleep(1500);
+    await swipe(cdp, 330, 90); await settle(m);
     st = await state(m);
     ok(`swipe ${k} snaps to exactly item ${k+1} (3D follows)`, st.act.length===1 && st.act[0]===k && st.snapped===k && Math.abs(st.scrollP-k)<0.01, JSON.stringify({act:st.act,snapped:st.snapped,p:st.scrollP}));
     if (k===2) await m.screenshot({path:SH+'05-vault-item3-animal-print-mobile.png'});
   }
-  await swipe(cdp, 250, 200, 420, 4, 300); await sleep(1500);
+  await swipe(cdp, 250, 200, 420, 4, 300); await settle(m);
   st = await state(m); ok('small swipe never rests between pieces', st.snapped>=0 && st.act.length===1, JSON.stringify({act:st.act,snapped:st.snapped}));
   const before = st.act[0];
-  await swipe(cdp, 90, 330); await sleep(1500);
+  await swipe(cdp, 90, 330); await settle(m);
   st = await state(m); ok('swipe right goes back one', st.act[0]===before-1 && st.snapped===before-1, JSON.stringify(st.act));
   const cur = st.act[0];
   const delays = await m.evaluate(i => [...document.querySelectorAll(`.slide[data-i="${i}"] .line`)].map(l => getComputedStyle(l).transitionDelay.split(',')[0]), cur);
@@ -108,7 +111,7 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   ok('touch targets >= 44px', small.length===0, JSON.stringify(small));
   const fpsM = await m.evaluate(() => window.__fps);
   /* software GL runs at a few fps: wait for the rail to settle on the piece before tapping (no tap during a glide) */
-  const settle = async (pg) => { await pg.waitForFunction(() => { const r = window.__rig, a = document.querySelector('.slide.is-active'); return a && Math.abs(r.scrollP - Math.round(r.scrollP)) < 0.002 && +a.dataset.i === Math.round(r.scrollP) }, null, { timeout: 15000 }); await sleep(300); return pg.evaluate(() => +document.querySelector('.slide.is-active').dataset.i) };
+  /* (settle() is defined at the top of the file) */
   const curS = await settle(m);
   await m.locator(`.slide[data-i="${curS}"] .details`).tap(); await sleep(1400);
   ok('View details opens 3D inspect', await m.locator('.inspect').count()===1 && await m.locator('#inspect-wa').count()===1);
@@ -132,7 +135,7 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   await m.locator('#inspect-details').tap(); await sleep(900);
   await m.keyboard.press('Escape'); await sleep(800);
   st = await state(m); ok('Esc closes sheet', !st.sheet);
-  for (let k=0;k<14;k++){ await swipe(cdp, 330, 90); await sleep(1100); }
+  for (let k=0;k<14;k++){ await swipe(cdp, 330, 90); await sleep(1100); } /* walks past the last piece: no active slide to settle on */
   await sleep(1200);
   st = await state(m);
   const fin = await m.evaluate(() => document.querySelector('.slide.final').innerText);
@@ -203,7 +206,7 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   await d.screenshot({path:SH+'08-gate-desktop.png'});
   const ring = await d.evaluate(() => { const r=getComputedStyle(document.querySelector('.ring')); return r.opacity+' '+r.borderTopColor; });
   ok('desktop: red ring cursor on gate', parseFloat(ring) > .5 && /255, 42, 58/.test(ring), ring);
-  await d.locator('#crest').click(); await d.waitForSelector('.tailor.typed', {timeout:15000}); await sleep(900);
+  await d.locator('#crest').click(); await d.waitForSelector('.tailor.typed', {timeout:60000}); await sleep(900);
   ti = await tailorInfo(d); ok('desktop: shopkeeper scene shown', !!ti && ti.ch.length===2);
   const host = await d.evaluate(() => ({ ember: document.querySelectorAll('.cig-ember').length, smoke: document.querySelectorAll('.cig-smoke i').length, lids: document.querySelectorAll('.cat-lid').length,
     emberAnim: document.querySelector('.cig-ember')?.getAnimations().length || 0, img: document.querySelector('.sf-host img')?.currentSrc || '', panelR: document.querySelector('.sf-panel').getBoundingClientRect().right, catX: document.querySelector('.sf-host').getBoundingClientRect().left + document.querySelector('.sf-host').getBoundingClientRect().width * 0.3 }));
@@ -223,33 +226,33 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   const peek = await d.evaluate(() => document.querySelectorAll('.slide')[1].getBoundingClientRect().left / innerWidth);
   ok('next slide starts at 92% (8% peek)', Math.abs(peek-.92)<.01, peek.toFixed(3));
   await sleep(600); await d.screenshot({path:SH+'09-vault-desktop.png'});
-  await d.keyboard.press('ArrowRight'); await sleep(1300);
+  await d.keyboard.press('ArrowRight'); await settle(d, 1);
   st = await state(d); ok('ArrowRight advances one', st.act[0]===1 && st.snapped===1);
   await sleep(500); await d.screenshot({path:SH+'10-vault-velvet-desktop.png'});
-  await d.keyboard.press('ArrowLeft'); await sleep(1300);
+  await d.keyboard.press('ArrowLeft'); await settle(d, 0);
   st = await state(d); ok('ArrowLeft back one', st.act[0]===0 && st.snapped===0);
-  await d.keyboard.press('ArrowLeft'); await sleep(900);
+  await d.keyboard.press('ArrowLeft'); await settle(d);
   st = await state(d); ok('first piece resists at edge', st.act[0]===0 && st.snapped===0);
   await d.mouse.move(700,450);
   // software GL renders ~7fps here, so a real 16ms wheel burst is replayed inside the page as one gesture
   const burst = (dx, dy) => d.evaluate(([dx,dy]) => { for (let i=0;i<12;i++) window.dispatchEvent(new WheelEvent('wheel',{deltaX:dx,deltaY:dy,cancelable:true,bubbles:true})); }, [dx,dy]);
   await burst(0,40);
-  await sleep(1400); st = await state(d); ok('vertical wheel gesture = one piece', st.act[0]===1 && st.snapped===1, JSON.stringify(st.act));
+  await settle(d, 1); st = await state(d); ok('vertical wheel gesture = one piece', st.act[0]===1 && st.snapped===1, JSON.stringify(st.act));
   await burst(30,0);
-  await sleep(1400); st = await state(d); ok('trackpad horizontal gesture = one piece', st.act[0]===2 && st.snapped===2, JSON.stringify(st.act));
-  await d.mouse.wheel(0,-100); await sleep(1400);
+  await settle(d, 2); st = await state(d); ok('trackpad horizontal gesture = one piece', st.act[0]===2 && st.snapped===2, JSON.stringify(st.act));
+  await d.mouse.wheel(0,-100); await settle(d, 1);
   st = await state(d); ok('single wheel notch back = one piece', st.act[0]===1 && st.snapped===1, JSON.stringify(st.act));
   await d.mouse.move(1000,450); await d.mouse.down();
   for (let i=1;i<=10;i++){ await d.mouse.move(1000-i*30,450); await sleep(16); }
-  await d.mouse.up(); await sleep(1500);
+  await d.mouse.up(); await settle(d);
   st = await state(d); ok('click-and-drag = one piece', st.act[0]===2 && st.snapped===2, JSON.stringify(st.act));
   await d.mouse.move(400,450); await d.mouse.down();
   for (let i=1;i<=10;i++){ await d.mouse.move(400+i*5,450); await sleep(60); }
-  await d.mouse.up(); await sleep(1500);
+  await d.mouse.up(); await settle(d, 2);
   st = await state(d); ok('short slow drag returns to same piece', st.act[0]===2 && st.snapped===2, JSON.stringify(st.act));
-  await d.locator('#next').click(); await sleep(2200);
+  await d.locator('#next').click(); await settle(d, 3);
   st = await state(d); ok('next arrow button', st.act[0]===3 && st.snapped===3);
-  await d.locator('#prev').click(); await sleep(2200);
+  await d.locator('#prev').click(); await settle(d);
   st = await state(d); ok('prev arrow button', st.act[0]===2 && st.snapped===2);
   await sleep(800);
   const fpsD = await d.evaluate(() => window.__fps);

@@ -30,3 +30,7 @@ Thumbs.db
 .env.local
 .env.*.local
 dist-live
+
+# admin credentials must never be committed
+ADMIN-CREDENTIALS*.txt
+dist-test

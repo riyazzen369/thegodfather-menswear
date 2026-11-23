@@ -50,7 +50,7 @@ be committed or put in `.env`.
    ```bash
    export SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=<service-role key>
    npm run seed                                   # uploads the 12 bundled pieces and their photos
-   npm run admin:create -- owner@example.com ADMIN-CREDENTIALS.txt
+   npm run admin:create -- owner@example.com
    ```
 4. Put the public values in `.env.production.local` (see `.env.example`) and deploy:
    ```
