@@ -1,5 +1,5 @@
 import Pic from './Pic'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CATEGORIES, FOLLOW_URL, ITEMS, SAMPLE_PRICES } from './data'
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -12,6 +12,8 @@ export default function Grid({ onOpen, onEnter, inert, initialCat = 'all' }: {
   inert: boolean
 }) {
   const [cat, setCat] = useState<string>(initialCat)
+  /* the heading takes focus once the grid is on screen (the app's own focus call can run before React has rendered it) */
+  useEffect(() => { document.getElementById('grid-title')?.focus({ preventScroll: true }) }, [])
   const list = ITEMS.map((it, i) => ({ it, i })).filter(x => cat === 'all' || x.it.category === cat)
   return (
     <main className="grid-page" id="grid" inert={inert} aria-labelledby="grid-title">
