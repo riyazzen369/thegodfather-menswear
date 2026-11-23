@@ -6,7 +6,8 @@ const { chromium } = require('playwright'); const path = require('path'), fs = r
 const restOn = (p, n) => p.waitForFunction(n => { const r = window.__rig; return Math.round(r.scrollP) === n && Math.abs(r.scrollP - n) < 0.001 }, n, { timeout: 15000 });
 const URL = process.env.URL || 'http://localhost:8795/'; const OUT = path.join(__dirname, '..', 'shots'); fs.mkdirSync(OUT, { recursive: true });
 (async () => {
-  const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const { ARGS, assertGL } = require('./gl');
+  const b = await chromium.launch({ args: ARGS }); await assertGL(b);
   let bad = 0, n0 = 0; const ok = (name, pass, info = '') => { if (!pass) bad++; n0++; if (!pass || process.env.VERBOSE) console.log((pass ? 'PASS ' : 'FAIL ') + name + (info ? ' — ' + info : '')) }
   for (const [W, H] of (process.env.VPS || '390x844,1440x900').split(',').map(v => v.split('x').map(Number))) {
     const mob = W < 700, c = await b.newContext({ viewport: { width: W, height: H }, isMobile: mob, hasTouch: mob, deviceScaleFactor: 1 }); const p = await c.newPage()

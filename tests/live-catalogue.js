@@ -7,7 +7,7 @@ const { execSync, spawn } = require('child_process');
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..'), SH = path.join(ROOT, 'shots') + '/'; fs.mkdirSync(SH, { recursive: true });
 const MOCK = 'https://mockref.supabase.co', ANON = 'anon-test-key', PORT = 8796, URL = `http://localhost:${PORT}/`;
-const ARGS = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
+const { ARGS, assertGL } = require('./gl');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let fails = 0; const ok = (n, c, info = '') => { console.log(`${c ? 'PASS' : 'FAIL'} ${n}${c ? '' : '  ' + info}`); if (!c) fails++; };
 const img = n => fs.readFileSync(path.join(ROOT, 'public/img', n));
@@ -51,9 +51,11 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
   const graph = [...seen].map(f => fs.readFileSync(path.join(AS, f), 'latin1')).join('');
   ok(`public site bundle has no background-removal / onnx code (${[...seen].join(' ')})`, seen.size >= 3 && !/onnxruntime|removeBackground|isnet_quint8/.test(graph));
   ok('build: anon key + URL embedded, no service-role key', dist.includes(ANON) && dist.includes(MOCK) && !/service_role|SERVICE_ROLE/.test(dist));
-  const srv = spawn('npx', ['vite', 'preview', '--outDir', 'dist-live', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' });
+  /* the port must be free (a leftover server would serve an old build), and vite is started directly: through npx or a shell the child outlives kill() on Windows */
+  try { await fetch(URL); console.error('Port ' + PORT + ' is already in use (a leftover preview server?). Stop it and run again.'); process.exit(1) } catch { /* free */ }
+  const srv = spawn(process.execPath, [path.join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--outDir', 'dist-live', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) { try { await fetch(URL); break } catch { await sleep(250) } }
-  const browser = await chromium.launch({ args: ARGS });
+  const browser = await chromium.launch({ args: ARGS }); await assertGL(browser);
   const errs = [];
   const newCtx = async (o) => { const c = await browser.newContext(o); await c.addInitScript(() => sessionStorage.setItem('gf-entered', '1')); await mockSite(c); return c; };
   const watch = (p, tag) => { p.on('pageerror', e => errs.push(tag + ': ' + e.message)); p.on('console', m => { if (m.type() === 'error' && !/mockref|realtime|websocket|ERR_FAILED|net::/i.test(m.text()) && !(tag === 'admin' && /status of (400|404)/.test(m.text()))) errs.push(tag + ': ' + m.text()); }); };

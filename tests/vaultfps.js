@@ -1,7 +1,7 @@
 // vault slide smoothness on the box: arrow changes + mouse drags + (mobile) touch swipes; frame-time stats from rAF
 const { chromium } = require('playwright'); const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const BASE = process.env.BASE || 'http://localhost:8795/'; const SHOTS = process.env.SHOTS; const OUT=require('path').join(__dirname,'..','shots'); require('fs').mkdirSync(OUT,{recursive:true});
-(async()=>{ const b=await chromium.launch({args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
+(async()=>{ const { ARGS, assertGL } = require('./gl'); const b=await chromium.launch({args:ARGS}); await assertGL(b);
  for (const [W,H] of (process.env.VPS||'1440x900,390x844').split(',').map(v=>v.split('x').map(Number))) { const mob=W<700
   const c=await b.newContext({viewport:{width:W,height:H},deviceScaleFactor:1,isMobile:mob,hasTouch:mob}); const p=await c.newPage()
   const errs=[]; p.on('pageerror',e=>errs.push(e.message))

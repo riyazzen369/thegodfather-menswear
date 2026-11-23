@@ -1,14 +1,14 @@
 const { chromium } = require('playwright');
 const URL = process.env.URL || 'http://localhost:8795/';
 require('fs').mkdirSync(require('path').join(__dirname, 'out'), { recursive: true });
-const F = '?force3d';   // swiftshader runs at ~5 fps; keep the 3D path under test instead of the slow-GPU fallback
+const F = '?force3d';   // keep the 3D path under test instead of the slow-GPU fallback (also on software GL, GL=sw)
 const SH = require('path').join(__dirname, '..', 'shots') + '/'; require('fs').mkdirSync(SH, { recursive: true });
 const results = []; const ok = (name, pass, info='') => { results.push({name, pass, info}); console.log((pass?'PASS ':'FAIL ')+name+(info?' — '+info:'')); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 /* software GL runs at a few fps: after every gesture wait for the rail to come to rest on a piece, instead of a fixed sleep */
 const settle = async (pg, to) => { await pg.waitForFunction((to) => { const r = window.__rig, a = document.querySelector('.slide.is-active'); return a && (to === undefined || to === null || Math.round(r.scrollP) === to) && Math.abs(r.scrollP - Math.round(r.scrollP)) < 0.001 && +a.dataset.i === Math.round(r.scrollP) }, to, { timeout: 15000 }); await sleep(300); return pg.evaluate(() => +document.querySelector('.slide.is-active').dataset.i) };
 
-const ARGS = ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'];
+const { ARGS, assertGL, sw: SOFTGL } = require('./gl');
 const tailorInfo = page => page.evaluate(() => {
   const t = document.querySelector('#tailor'); if (!t) return null;
   const ch = [...t.querySelectorAll('.sf-choice')].map(b => { const r=b.getBoundingClientRect(); return {id:b.id, w:r.width, h:r.height, tag:b.tagName, href:b.href||'', op:getComputedStyle(b.parentElement).opacity}; });
@@ -37,7 +37,7 @@ async function swipe(cdp, x0, x1, y=420, steps=8, dur=180){
 const errs = [];
 const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.push(tag+': '+m.text()); }); p.on('pageerror', e => errs.push(tag+' pageerror: '+e.message)); };
 (async () => {
-  const browser = await chromium.launch({ args: ARGS });
+  const browser = await chromium.launch({ args: ARGS }); const GLR = await assertGL(browser);
   // ---------- MOBILE 3D ----------
   const mctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:2, isMobile:true, hasTouch:true,
     recordVideo: process.env.NOVIDEO ? undefined : {dir:require('path').join(__dirname,'out','video'), size:{width:390,height:844}} });
@@ -149,6 +149,8 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   ti = await tailorInfo(m); ok('tour: curtains close on the shopkeeper', ti && ti.closing);
   await sleep(1400);
   st = await state(m);
+  /* focus moves to the heading a frame after the grid opens: wait for it, then read the real state */
+  await m.waitForFunction(() => document.activeElement && document.activeElement.id === 'grid-title', null, { timeout: 4000 }).catch(() => {});
   const gi = await m.evaluate(() => { const cs=[...document.querySelectorAll('#grid .card')]; const lefts=[...new Set(cs.map(c=>Math.round(c.getBoundingClientRect().left)))];
     const c=cs[0], r=c.getBoundingClientRect(); return { n:cs.length, cols:lefts.length, name:c.querySelector('.card-name').textContent, price:(c.querySelector('.card-price')||{}).textContent, img:c.querySelector('img').getAttribute('src'), h:r.height, w:r.width, focus:document.activeElement.id }; });
   ok('attire tour: grid of all 12 pieces, 2 columns at 390px', st.grid && gi.n===12 && gi.cols===2 && /From/.test(gi.price) && gi.w>=44, JSON.stringify(gi));
@@ -339,9 +341,10 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   await nctx.close();
 
   ok('no console errors', errs.length===0, errs.join(' | ').slice(0,800));
-  console.log('FPS (swiftshader, software GL): mobile', fpsM, 'desktop', fpsD);
+  console.log('FPS (' + GLR + '): mobile', fpsM, 'desktop', fpsD);
   await browser.close();
   const f = results.filter(x => !x.pass);
+  process.exitCode = f.length ? 1 : 0; // a failed check must fail the run
   console.log(`\n${results.length-f.length}/${results.length} passed`);
   require('fs').writeFileSync(require('path').join(__dirname,'out','results3d.json'), JSON.stringify({results, fpsM, fpsD},null,1));
 })();
