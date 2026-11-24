@@ -52,7 +52,22 @@ export default function Admin() {
   if (!session) return <Shell><Login sb={sb} /></Shell>
   return <Shell user={session.user.email} onOut={() => sb.auth.signOut()}>{isAdmin === false
     ? <p className="note" id="not-admin">This account is signed in but is not a catalogue admin, so it cannot change anything. Ask the store owner to add it.</p>
-    : <><Catalogue sb={sb} /><Orders sb={sb} /></>}</Shell>
+    : <Tabbed sb={sb} />}</Shell>
+}
+
+function Tabbed({ sb }: { sb: SupabaseClient }) {
+  const [tab, setTab] = useState<'products' | 'orders'>(() => location.hash === '#orders' ? 'orders' : 'products')
+  const pick = (t: 'products' | 'orders') => { setTab(t); history.replaceState(null, '', t === 'orders' ? '#orders' : location.pathname + location.search) }
+  return (
+    <>
+      <nav className="adm-tabs" role="tablist" aria-label="Admin sections">
+        <button type="button" role="tab" id="tab-products" aria-selected={tab === 'products'} onClick={() => pick('products')}>Products</button>
+        <button type="button" role="tab" id="tab-orders" aria-selected={tab === 'orders'} onClick={() => pick('orders')}>Orders</button>
+      </nav>
+      <div hidden={tab !== 'products'}><Catalogue sb={sb} /></div>
+      <div hidden={tab !== 'orders'}><Orders sb={sb} /></div>
+    </>
+  )
 }
 
 function Shell({ children, user, onOut }: { children: React.ReactNode; user?: string; onOut?: () => void }) {
