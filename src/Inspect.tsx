@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Item } from './data'
+import { plainVars } from './plain'
 
 /* Inspect a piece: drag to flip. The garment card turns around its vertical axis following the finger 1:1
    (a full card width = 180°), and on release springs to the nearest face, front (0°) or back (180°); a fast fling flips it.
@@ -19,7 +20,7 @@ export default function Inspect({ item, onClose, onDetails, enquireHref, price, 
   const st = useRef({ a: 0, v: 0, target: 0, zoom: 1, drag: null as null | { id: number; x: number; a0: number; v: number; t0: number; hist: { x: number; t: number }[] }, pinch: null as null | { d0: number; z0: number }, pts: new Map<number, { x: number; y: number }>(), raf: 0, last: 0 })
   useEffect(() => { const id = requestAnimationFrame(() => { setShown(true); close.current?.focus({ preventScroll: true }) }); return () => cancelAnimationFrame(id) }, [])
   const src = item.cut ?? cutOf(item.images[0].src)
-  const backSrc = item.back
+  const backSrc = item.details.plainBack ? undefined : item.back
   /* layout width (unaffected by the rotation), so the drag stays 1:1 as the card foreshortens */
   const W = () => card.current?.offsetWidth || 300
 
@@ -111,7 +112,7 @@ export default function Inspect({ item, onClose, onDetails, enquireHref, price, 
           <div className="flip-face flip-back" aria-hidden={face !== 'back'}>
             {backSrc
               ? <img src={backSrc} alt={`${item.name}, back`} draggable={false} decoding="async" />
-              : <div className="flip-plain" role="img" aria-label={`${item.name}, back`} style={{ WebkitMaskImage: `url(${src})`, maskImage: `url(${src})` } as React.CSSProperties} />}
+              : <div className="flip-plain" role="img" aria-label={`${item.name}, back`} style={{ WebkitMaskImage: `url(${src})`, maskImage: `url(${src})`, ...plainVars(item.details.plainTone) } as React.CSSProperties} />}
           </div>
         </div>
         <p className="flip-face-label" aria-live="polite"><span className={face === 'front' ? 'on' : ''}>Front</span> / <span className={face === 'back' ? 'on' : ''}>Back</span></p>

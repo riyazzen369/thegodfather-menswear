@@ -27,7 +27,7 @@ export type Item = {
   /* optional photo of the back (transparent cut-out, same framing as public/img/cut/<slug>-1.webp).
      Without it the inspect view shows the shared plain back: the piece's own outline, mirrored, in a plain fabric tone. */
   back?: string
-  details: { fit: string; madeToMeasure: string; delivery: string }
+  details: { fit: string; madeToMeasure: string; delivery: string; plainBack?: boolean; plainTone?: string }
   /* set for products that come from the live catalogue (Supabase); bundled items leave them empty */
   slug?: string
   collection?: 'premium' | 'attire'   // premium: vault + grid; attire: grid only
