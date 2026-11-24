@@ -13,7 +13,7 @@ export function supa(): Promise<SupabaseClient | null> {
   return client ??= import('@supabase/supabase-js').then(({ createClient }) => createClient(URL_!, KEY!, { auth: { persistSession: true, storageKey: 'gf-admin' } }))
 }
 export type Row = {
-  id: string; slug: string; name: string; collection: 'premium' | 'attire'; category: Category; price_from: number | null
+  id: string; slug: string; name: string; collection: 'premium' | 'attire'; category: Category; price_from: number | null; sizes?: Record<string, number> | null
   tagline: string; description: string; fabric: string; details: Partial<Item['details']>; colours: Item['colours']
   front_path: string | null; extra_paths: { path: string; alt?: string }[]; front_cut_path: string | null; back_path: string | null; blur: string | null
   nudge?: { front?: { s: number; x: number; y: number }; back?: { s: number; x: number; y: number }; frontBox?: { w: number; h: number } }; src_paths?: { front?: string; back?: string }
@@ -25,7 +25,7 @@ export function toItem(r: Row): Item {
   const v = r.updated_at, front = publicUrl(r.front_path, v)
   return {
     slug: r.slug, collection: r.collection, category: r.category, name: r.name, tagline: r.tagline, fabric: r.fabric || r.description,
-    description: r.description, price: r.price_from, colours: Array.isArray(r.colours) ? r.colours : [],
+    description: r.description, price: r.price_from, sizes: r.sizes && typeof r.sizes === 'object' ? r.sizes : {}, colours: Array.isArray(r.colours) ? r.colours : [],
     images: front ? [{ src: front, alt: `${r.name}, front`, source: 'store photo' as const },
       ...(Array.isArray(r.extra_paths) ? r.extra_paths : []).map(e => ({ src: publicUrl(e.path, v)!, alt: e.alt || r.name, source: 'store photo' as const }))] : [],
     cut: publicUrl(r.front_cut_path, v), back: publicUrl(r.back_path, v), blur: r.blur || undefined,
