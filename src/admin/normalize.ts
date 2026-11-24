@@ -132,3 +132,26 @@ export async function place(c: Cut, n: Nudge, opts: { photo: boolean; match?: { 
 /* the raw cut-out (background removed, not placed/graded), kept so nudges can be redone later without re-running removal */
 export async function rawBlob(c: Cut) { const b = bbox(c.bmp); const cv = canvas(Math.round(b.w), Math.round(b.h)); cv.getContext('2d')!.drawImage(c.bmp, b.x, b.y, b.w, b.h, 0, 0, cv.width, cv.height); return toBlob(cv, 0.95) }
 export async function cutFromUrl(url: string): Promise<Cut> { const r = await fetch(url); if (!r.ok) throw new Error('Could not load the saved cut-out.'); return { bmp: await createImageBitmap(await r.blob()), method: 'alpha' } }
+
+/* The plain back: the colour a piece is made in, read from its front cut-out. Looks at the chest area, ignores skin tones and
+   near-transparent edges, and takes the most common colour. Returns '#rrggbb'. */
+export async function toneFromUrl(url: string): Promise<string> {
+  const r = await fetch(url); if (!r.ok) throw new Error('Could not load the photo')
+  const bmp = await createImageBitmap(await r.blob())
+  const W = 64, H = Math.max(8, Math.round(64 * bmp.height / bmp.width)), cv = document.createElement('canvas'); cv.width = W; cv.height = H
+  const g = cv.getContext('2d', { willReadFrequently: true })!; g.drawImage(bmp, 0, 0, W, H)
+  const px = g.getImageData(Math.round(W * .22), Math.round(H * .28), Math.round(W * .56), Math.round(H * .32)).data
+  const bins = new Map<number, { n: number; r: number; g: number; b: number }>()
+  for (let i = 0; i < px.length; i += 4) {
+    const [R, G, B, A] = [px[i], px[i + 1], px[i + 2], px[i + 3]]
+    if (A < 200) continue
+    const skin = R > 95 && G > 40 && B > 20 && R > G && R > B && R - Math.min(G, B) > 15 && Math.abs(R - G) > 12 && R - B > 25 && R < 250 && G / R > .45 && G / R < .85
+    if (skin) continue
+    const k = (R >> 5) << 6 | (G >> 5) << 3 | (B >> 5), e = bins.get(k) ?? { n: 0, r: 0, g: 0, b: 0 }
+    e.n++; e.r += R; e.g += G; e.b += B; bins.set(k, e)
+  }
+  let best = { n: 0, r: 42, g: 35, b: 31 }
+  for (const e of bins.values()) if (e.n > best.n) best = e
+  const h = (v: number) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')
+  return `#${h(best.r / best.n || best.r)}${h(best.g / best.n || best.g)}${h(best.b / best.n || best.b)}`
+}
