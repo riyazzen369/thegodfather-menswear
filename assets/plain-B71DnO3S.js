@@ -1,0 +1,1 @@
+var e=e=>/^#[0-9a-f]{6}$/i.test(e)?[1,3,5].map(t=>parseInt(e.slice(t,t+2),16)):null,t=(e,t,n)=>`#`+e.map(e=>Math.round(e+(n-e)*t).toString(16).padStart(2,`0`)).join(``);function n(n){let r=n?e(n):null;return r?{"--plain-hi":t(r,.14,255),"--plain":n,"--plain-lo":t(r,.3,0)}:{}}export{n as t};
