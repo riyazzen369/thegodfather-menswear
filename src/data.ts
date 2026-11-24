@@ -7,6 +7,8 @@ export const CONTACT = {
   phone: '+919092248282',               // used for the call button
   phoneLabel: '+91 90922 48282',
   address: 'Get directions on Google Maps',
+  instagram: 'https://www.instagram.com/the.godfather__clothing',
+  instagramLabel: '@the.godfather__clothing',
   mapsUrl: 'https://maps.app.goo.gl/PU97R3Jrgu9qmCty8',
   upiId: '',                            // PLACEHOLDER: shop UPI ID (e.g. name@bank). Empty = the UPI option is hidden
   upiName: 'The Godfather Menswear',
