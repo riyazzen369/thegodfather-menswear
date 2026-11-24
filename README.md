@@ -83,7 +83,7 @@ See [docs/CONTENT.md](docs/CONTENT.md) for everything still marked PLACEHOLDER.
 2. **Entry (2.5s, with Skip).** The logo splits into two hinged doors (CSS 3D), red light floods in behind them, and the camera dollies through the store photo as red curtains part.
 3. **Storefront and Lorenzo.** The rainy night storefront fills the screen.
    - The interior lights flicker on, the neon sign glows and hums, rain falls in front and behind, drops splash on the wet floor, and the camera slowly dollies in with depth parallax.
-   - Copy: "Night boutique · Bespoke tailoring", then "Dressed for the family business."
+   - Copy: "Signature edition · Bespoke style", then "Dressed for the brotherhood & family business."
    - Lorenzo, your host, rises in at the bottom right (fedora, black pinstripe, red tie). He breathes, with rain falling in front of him.
    - His line types out: "Good morning / Good day / Good evening, sir. Shall I show you The Godfather Attire Collection, or The Godfather Elite Wardrobe?" The greeting follows the visitor's local time.
    - Two buttons: The Godfather Attire Collection (dark) and The Godfather Elite Wardrobe (red).

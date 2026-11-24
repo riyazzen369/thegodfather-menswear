@@ -101,9 +101,9 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
       </header>
 
       <div className="sf-hero">
-        <p className="sf-kicker"><i aria-hidden="true" />Night boutique · Bespoke tailoring</p>
-        <h1 className="sf-title">Dressed for the <em>family</em> business.</h1>
-        <p className="sf-sub">Suits cut to measure, shirts with nerve, and an Elite wardrobe for those who know the password.</p>
+        <p className="sf-kicker"><i aria-hidden="true" />Signature edition · Bespoke style</p>
+        <h1 className="sf-title">Dressed for the brotherhood &amp; <em>family</em> business.</h1>
+        <p className="sf-sub">Precision-cut shirts, statement layers, and an after-hours wardrobe built for those in the know.</p>
       </div>
 
       <div className="sf-panel">

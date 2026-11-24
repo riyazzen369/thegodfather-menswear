@@ -303,7 +303,7 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .sf-kicker i{display:block;width:26px;height:1px;background:var(--neon)}
 .sf-title{margin:0;font-family:var(--slab);font-weight:400;font-size:clamp(1.65rem,7.4vw,4.6rem);line-height:1.02;letter-spacing:-.005em;text-shadow:0 2px 20px rgba(0,0,0,.6)}
 .sf-title em{font-style:normal;color:var(--neon);text-shadow:0 0 18px rgba(255,42,58,.45)}
-.sf-sub{display:none;margin:12px 0 0;max-width:36ch;color:#cfc4b4;font-size:.9rem;line-height:1.5}
+.sf-sub{display:none;margin:12px 0 0;max-width:40ch;color:#cfc4b4;font-size:.9rem;line-height:1.5}
 @keyframes riseIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 .sf-panel{position:absolute;z-index:5;left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);bottom:calc(var(--sab) + 12px);
   padding:16px 16px 14px;border:1px solid rgba(255,42,58,.55);border-radius:6px;background:rgba(8,5,6,.72);
@@ -347,7 +347,7 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
   .sf-host{right:1vw}
   .tailor .skip{top:auto;bottom:26px;right:26px}
 }
-@media (min-width:960px) and (max-width:1279px){ .sf-panel{top:33vh;width:30vw} .sf-hero{max-width:34vw} .sf-title{font-size:4.4vw} .sf-kicker{white-space:nowrap;font-size:.6rem} .sf-sub{display:none} }
+@media (min-width:960px) and (max-width:1279px){ .sf-panel{top:33vh;width:30vw} .sf-hero{max-width:34vw} .sf-title{font-size:4vw} .sf-kicker{white-space:nowrap;font-size:.6rem} .sf-sub{display:none} }
 
 /* premium: through the glass doors, past the slats, into the private room; the wardrobe opens on gold */
 .sf-slats,.sf-red,.sf-room,.t-gold{position:absolute;inset:0;pointer-events:none;opacity:0}
@@ -615,3 +615,9 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 @media (min-width:960px){ .slide.final{padding:92px 8vw 88px} }
 
 @media (max-height:700px){ .final .addr{font-size:.8rem;margin-bottom:8px} .final .btn{min-height:42px;padding-top:8px;padding-bottom:8px} .slide.final{padding-top:calc(var(--sat,0px) + 78px);padding-bottom:calc(var(--sab,0px) + 70px)} }
+
+/* storefront: the hero text stays clear of Lorenzo's panel (its left edge = 100vw - 1vw - half the host width - panel width) */
+@media (min-width:1280px){
+  .sf-hero{max-width:min(620px,calc(93vw - min(86vh,980px) * .5 - min(34vw,450px) - 24px))}
+  .sf-title{font-size:clamp(2.6rem,calc((93vw - min(86vh,980px) * .5 - min(34vw,450px) - 24px) / 8.2),4.6rem)}
+}
