@@ -1,3 +1,4 @@
+import { CartButton, CartDrawer, ShopBuy } from './Shop'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { withElite } from './Elite'
 import { WA_ICON, CALL_ICON } from './icons'
@@ -418,6 +419,7 @@ export default function App(_: { rev?: number }) {
   /* ---------- keyboard ---------- */
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (document.getElementById('cart')) return   /* the cart drawer owns the keyboard while open */
       if (inspectRef.current !== null && sheetRef.current === null) {
         if (e.key === 'Escape') { e.preventDefault(); closeInspect() }
         else if (e.key === 'Tab') { const d = document.getElementById('inspect'); const f = d ? Array.from(d.querySelectorAll<HTMLElement>('a,button')) : []; if (f.length) { const i = f.indexOf(document.activeElement as HTMLElement); if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus() } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus() } } }
@@ -698,8 +700,9 @@ export default function App(_: { rev?: number }) {
               <dt>Colours</dt><dd><span className="swatches">{it.colours.map(c => <span className="swatch" key={c.name}><b style={{ background: c.hex }} />{c.name}</span>)}</span></dd>
               <dt>Made to measure</dt><dd>{it.details.madeToMeasure}</dd>
               <dt>Delivery</dt><dd>{it.details.delivery}</dd>
-              {it.price != null && <><dt>Price</dt><dd>From {inr.format(it.price)}{SAMPLE_PRICES ? ' (sample)' : ''}</dd></>}
+              {it.price != null && SAMPLE_PRICES && <><dt>Price</dt><dd>Sample price, subject to change</dd></>}
             </dl>
+            <ShopBuy item={it} />
             <a className="btn primary" id="sheet-wa" href={enquire(it)} target="_blank" rel="noopener">{WA_ICON}Enquire on WhatsApp</a>
           </div>
         </aside>
@@ -725,6 +728,8 @@ export default function App(_: { rev?: number }) {
       {view === 'walk' && <button className="skip walk-skip" id="walk-skip" onClick={skipWalk}>Skip</button>}
       <div className={`blackout ${fadeBlack ? 'on' : ''}`} aria-hidden="true" />
       <div className="ring" ref={ring} aria-hidden="true" />
+      <CartButton hidden={view === 'gate' || view === 'transition' || view === 'tailor' || view === 'walk'} />
+      <CartDrawer />
       {DEBUG_FPS && <FpsOverlay mode={mode} />}
       {!is3D && <div className="grain" aria-hidden="true" />}
     </div>

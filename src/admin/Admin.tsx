@@ -8,7 +8,7 @@ import { cutOut, cutFromUrl, place, rawBlob, NUDGE0, type Cut, type Nudge, type 
 
 type Draft = Omit<Row, 'id' | 'updated_at'> & { id?: string; updated_at?: string }
 const blank = (sort: number): Draft => ({
-  slug: '', name: '', collection: 'premium', category: 'formal', price_from: null, tagline: '', description: '', fabric: '',
+  slug: '', name: '', collection: 'premium', category: 'formal', price_from: null, sizes: {}, tagline: '', description: '', fabric: '',
   details: { fit: '', madeToMeasure: '', delivery: '' }, colours: [], front_path: null, extra_paths: [], front_cut_path: null,
   back_path: null, blur: null, nudge: {}, src_paths: {}, sort, published: false
 })
@@ -52,7 +52,7 @@ export default function Admin() {
   if (!session) return <Shell><Login sb={sb} /></Shell>
   return <Shell user={session.user.email} onOut={() => sb.auth.signOut()}>{isAdmin === false
     ? <p className="note" id="not-admin">This account is signed in but is not a catalogue admin, so it cannot change anything. Ask the store owner to add it.</p>
-    : <Catalogue sb={sb} />}</Shell>
+    : <><Catalogue sb={sb} /><Orders sb={sb} /></>}</Shell>
 }
 
 function Shell({ children, user, onOut }: { children: React.ReactNode; user?: string; onOut?: () => void }) {
@@ -82,6 +82,29 @@ function Login({ sb }: { sb: SupabaseClient }) {
       <button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
       <p className="note">Accounts are created by the store owner. Forgot your password? Ask them to reset it in Supabase.</p>
     </form>
+  )
+}
+
+type Order = { id: string; ref: string; name: string; phone: string; address: string; pincode: string; payment: string; utr: string | null; items: { name: string; size: string; qty: number }[]; total: number; delivery: string | null; status: string; created_at: string }
+function Orders({ sb }: { sb: SupabaseClient }) {
+  const [rows, setRows] = useState<Order[] | null>(null), [err, setErr] = useState('')
+  const load = async () => { const { data, error } = await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(100); if (error) setErr(error.message); else { setErr(''); setRows(data as Order[]) } }
+  useEffect(() => { load() }, [])
+  const setStatus = async (o: Order, status: string) => { setRows(l => l && l.map(x => x.id === o.id ? { ...x, status } : x)); const { error } = await sb.from('orders').update({ status }).eq('id', o.id); if (error) { setErr(error.message); load() } }
+  return (
+    <section id="adm-orders">
+      <div className="adm-bar"><h1>Orders {rows && <small>{rows.filter(r => r.status === 'new').length} new · {rows.length} shown</small>}</h1><button type="button" onClick={load}>Refresh</button></div>
+      {err && <p className="err" role="alert">{err}</p>}
+      {!rows ? <p className="note">Loading…</p> : !rows.length ? <p className="note">No orders yet.</p> : (
+        <ul className="adm-list">{rows.map(o => (
+          <li key={o.id} data-ref={o.ref}>
+            <span className="meta" style={{ gridColumn: '1 / 3' }}><b>{o.ref} · {inr.format(o.total)} · {o.payment.toUpperCase()}{o.utr ? ` (${o.utr})` : ''}</b>
+              <span>{o.items.map(i => `${i.name} ${i.size}×${i.qty}`).join(', ')}</span>
+              <span>{o.name} · {o.phone} · {o.address}, {o.pincode}{o.delivery ? ` · ${o.delivery}` : ''} · {new Date(o.created_at).toLocaleString('en-IN')}</span></span>
+            <select value={o.status} onChange={e => setStatus(o, e.target.value)} aria-label={`Status of ${o.ref}`}>{['new', 'confirmed', 'shipped', 'delivered', 'cancelled'].map(x => <option key={x}>{x}</option>)}</select>
+          </li>))}</ul>
+      )}
+    </section>
   )
 }
 
@@ -274,6 +297,11 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
             <label>Price from (₹)<input id="f-price" inputMode="numeric" value={d.price_from ?? ''} onChange={e => { const v = e.target.value.replace(/\D/g, ''); set('price_from', v ? Math.min(MAX_PRICE, Number(v)) : null) }} placeholder="Leave empty: price on request" /></label>
             <label>Order<input id="f-sort" inputMode="numeric" value={d.sort} onChange={e => set('sort', Math.min(MAX_SORT, Number(e.target.value.replace(/\D/g, '') || 0)))} /></label>
           </div>
+          <fieldset className="stock"><legend>Stock by size (leave all blank = every size on sale; blank or 0 for a size = sold out)</legend>
+            <div className="row5">{['S', 'M', 'L', 'XL', 'XXL'].map(z => (
+              <label key={z}>{z}<input id={`f-stock-${z}`} inputMode="numeric" value={d.sizes?.[z] ?? ''} onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 4); setD(x => { const n = { ...(x.sizes || {}) }; if (v === '') delete n[z]; else n[z] = Number(v); return { ...x, sizes: n } }) }} /></label>
+            ))}</div>
+          </fieldset>
           <label>Tagline<input id="f-tagline" value={d.tagline} maxLength={90} onChange={e => set('tagline', e.target.value)} /></label>
           <label>Fabric and make<textarea id="f-fabric" rows={2} value={d.fabric} onChange={e => set('fabric', e.target.value)} /></label>
           <label>Description (optional)<textarea id="f-desc" rows={3} value={d.description} onChange={e => set('description', e.target.value)} /></label>

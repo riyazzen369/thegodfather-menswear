@@ -8,6 +8,8 @@ export const CONTACT = {
   phoneLabel: '+91 90922 48282',
   address: 'Get directions on Google Maps',
   mapsUrl: 'https://maps.app.goo.gl/PU97R3Jrgu9qmCty8',
+  upiId: '',                            // PLACEHOLDER: shop UPI ID (e.g. name@bank). Empty = the UPI option is hidden
+  upiName: 'The Godfather Menswear',
   bookingUrl: ''                         // PLACEHOLDER: booking page URL. Empty = WhatsApp fitting request
 }
 export const SAMPLE_PRICES = true        // set to false once real prices are in
@@ -18,6 +20,7 @@ export type Category = 'formal' | 'wedding' | 'statement' | 'shirts'
 export type Item = {
   category: Category
   name: string; tagline: string; fabric: string; price: number | null
+  sizes?: Record<string, number>   // stock per size from the admin; missing/empty = not tracked (all sizes offered)
   images: Img[]; colours: { name: string; hex: string }[]
   /* optional photo of the back (transparent cut-out, same framing as public/img/cut/<slug>-1.webp).
      Without it the inspect view shows the shared plain back: the piece's own outline, mirrored, in a plain fabric tone. */
