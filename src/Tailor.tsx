@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { withElite } from './Elite'
-import { WA_ICON, CALL_ICON } from './icons'
+import { WA_ICON, CALL_ICON, IG_ICON } from './icons'
 import { CHOICES, CONTACT, HOST, STORE, TAILOR, greeting, type Choice } from './data'
 import Rain from './Rain'
 import { Mark } from './Pic'
@@ -150,6 +150,7 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
             <div className="contact-actions">
               <a className="btn primary" id="contact-wa" href={`https://wa.me/${CONTACT.whatsapp}?text=${encodeURIComponent('Hello, I would like to visit or book a fitting.')}`} target="_blank" rel="noopener" autoFocus>{WA_ICON}Enquire on WhatsApp</a>
               <a className="btn ghost" id="contact-call" href={`tel:${CONTACT.phone}`}>{CALL_ICON}Call {CONTACT.phoneLabel}</a>
+              <a className="btn ghost" id="contact-ig" href={CONTACT.instagram} target="_blank" rel="noopener">{IG_ICON}Instagram {CONTACT.instagramLabel}</a>
               <a className="contact-map" id="contact-map" href={CONTACT.mapsUrl} target="_blank" rel="noopener">{CONTACT.address}</a>
             </div>
             <button type="button" className="btn gold" id="contact-close" onClick={() => { setContact(false); document.getElementById('nav-contacts')?.focus() }}>Close</button>

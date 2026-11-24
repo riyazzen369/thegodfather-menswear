@@ -222,6 +222,7 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   await d.locator('#nav-contacts').click(); await sleep(400);
   const cc = await d.evaluate(() => ({ dlg: !!document.querySelector('[role=dialog] #contact-wa, #contact-title'), tel: document.getElementById('contact-call')?.getAttribute('href'), wa: document.getElementById('contact-wa')?.getAttribute('href') }));
   ok('Contacts opens a dialog with WhatsApp and call links', cc.dlg && /^tel:\+/.test(cc.tel) && /wa\.me/.test(cc.wa), JSON.stringify(cc));
+  ok('Contacts dialog links to the Instagram profile', await d.evaluate(() => document.getElementById('contact-ig')?.getAttribute('href')) === 'https://www.instagram.com/the.godfather__clothing');
   await d.keyboard.press('Escape'); await sleep(300);
   ok('Esc closes the Contacts dialog', !(await d.evaluate(() => !!document.getElementById('contact-title'))));
   const host = await d.evaluate(() => ({ ember: document.querySelectorAll('.cig-ember').length, smoke: document.querySelectorAll('.cig-smoke i').length, lids: document.querySelectorAll('.cat-lid').length,
