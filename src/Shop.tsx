@@ -98,7 +98,7 @@ export function CartDrawer() {
   const panel = useRef<HTMLDivElement>(null)
   const upi = !!CONTACT.upiId
   useEffect(() => { if (open) { setErr(''); if (!lines.length && step !== 'done') setStep('cart'); setTimeout(() => panel.current?.focus(), 30) } }, [open])  // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); close() }
+  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() }
       else if (e.key === 'Tab' && panel.current) {
         const f = [...panel.current.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),textarea,[tabindex="0"]')].filter(x => x.offsetParent !== null)
         if (!f.length) return

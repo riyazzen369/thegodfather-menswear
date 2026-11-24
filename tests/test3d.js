@@ -321,13 +321,13 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   ok('checkout: empty form is rejected', /enter your name/i.test(await d.locator('#checkout [role=alert]').textContent()));
   await d.fill('#co-name', 'Test Buyer'); await d.fill('#co-phone', '9876543210'); await d.fill('#co-address', '12 MG Road, Bengaluru'); await d.fill('#co-pincode', '560001');
   ok('checkout: UPI hidden until a UPI ID is configured', await d.locator('input[name=pay]').count() === 2);
-  const pop = d.context().waitForEvent('page', { timeout: 4000 }).catch(() => null);
+  await d.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(String(u)); return null } });
   await d.locator('#place-order').click(); await sleep(800);
-  const pg = await pop; const wurl = pg ? pg.url() : '';
-  ok('checkout: COD order confirmed with a reference and WhatsApp message', /GF\d{6}-/.test(await d.locator('#order-done').textContent()) && (!pg || /wa\.me/.test(wurl)), wurl);
+  const wurl = (await d.evaluate(() => window.__opened))[0] || '';
+  ok('checkout: COD order confirmed with a reference and WhatsApp message', /GF\d{6}-/.test(await d.locator('#order-done').textContent()) && /wa\.me\/919092248282\?text=.*GF\d{6}-.*Test%20Buyer/.test(wurl), wurl);
   ok('checkout: cart emptied after order', await d.evaluate(() => localStorage.getItem('gf-cart')) === '[]');
   await d.keyboard.press('Escape'); await sleep(300);
-  ok('Esc closes the cart, product sheet stays', !(await d.locator('#cart').count()) && (await state(d)).sheet);
+  ok('Esc closes the cart, product sheet stays', !(await d.locator('#cart').count()) && (await state(d)).sheet, JSON.stringify({ cart: await d.locator('#cart').count(), sheet: (await state(d)).sheet }));
   await d.keyboard.press('Escape'); await sleep(800);
   await d.locator('#home').click(); await sleep(1600);
   st = await state(d); ok('desktop: logo returns to gate', st.gate);
