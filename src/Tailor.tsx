@@ -102,7 +102,7 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
 
       <div className="sf-hero">
         <p className="sf-kicker"><i aria-hidden="true" />Signature edition · Bespoke style</p>
-        <h1 className="sf-title">Dressed for the brotherhood &amp; <em>family</em> business.</h1>
+        <h1 className="sf-title">Dressed for the <em>brotherhood</em> &amp; <em>family</em> business.</h1>
         <p className="sf-sub">Precision-cut shirts, statement layers, and an after-hours wardrobe built for those in the know.</p>
       </div>
 
