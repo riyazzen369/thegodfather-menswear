@@ -197,6 +197,8 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
       /* editing an existing product's back only: bring in the saved front so the sizes match */
       if (which === 'back' && !next.front && d.src_paths?.front) next.front = { cut: await cutFromUrl(publicUrl(d.src_paths.front)!), nudge: { ...NUDGE0, ...(d.nudge?.front || {}) }, placed: null, fresh: false }
       await layout(next)
+      /* both photos are in: match the back to the front straight away */
+      if (next.front && next.back && (next.front.fresh || next.back.fresh)) { setFitNote(''); await runFit({ ...next }) }
     } catch (e) { setErr((e as Error).message) } finally { setBusy('') }
   }
   /* adjust a saved photo without re-uploading */
@@ -218,19 +220,23 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
   const vaultUrl = fp?.photoUrl ?? publicUrl(d.front_path, d.updated_at)
   const frontUrl = fp?.cutUrl ?? publicUrl(d.front_cut_path ?? d.front_path, d.updated_at)
   const backUrl = dropBack ? undefined : bp?.cutUrl ?? publicUrl(d.back_path, d.updated_at)
-  /* Auto fit: read both photos and line the back's subject up with the front's (size, left/right, up/down) */
+  /* Auto fit: line the back's subject up with the front's (size, left/right, up/down). Runs by itself as soon as both photos are in, and again on the button. */
+  const runFit = async (next: typeof faces) => {
+    if (!next.front || !next.back) return
+    setBusy('Matching the back to the front…')
+    await new Promise(r => setTimeout(r, 30))
+    const { nudge: fit, score } = autoFit(next.front.cut, next.front.nudge, next.back.cut)
+    next.back = { ...next.back, nudge: fit }
+    facesRef.current = next; await layout(next)
+    setFitNote(score >= 0.8 ? `Auto fit done. The back matches the front (${Math.round(score * 100)}% overlap).` : `Auto fit done, but the match is only ${Math.round(score * 100)}%. The back photo may be a different pose or crop, so check the flip and adjust by hand if needed.`)
+  }
   const autoFitBack = async () => {
     try {
       setErr(''); setFitNote(''); setBusy('Reading the front and back photos…')
       const next = { ...facesRef.current }
       for (const w of ['front', 'back'] as const) if (!next[w] && d.src_paths?.[w]) next[w] = { cut: await cutFromUrl(publicUrl(d.src_paths[w]!)!), nudge: { ...NUDGE0, ...(d.nudge?.[w] || {}) }, placed: null, fresh: false }
-      if (!next.front || !next.back) throw new Error('Add both a front photo and a back photo first, then press Auto fit.')
-      setBusy('Matching the back to the front… this can take a few seconds')
-      await new Promise(r => setTimeout(r, 30))
-      const { nudge: fit, score } = autoFit(next.front.cut, next.front.nudge, next.back.cut)
-      next.back = { ...next.back, nudge: fit }
-      facesRef.current = next; await layout(next)
-      setFitNote(score >= 0.8 ? `Auto fit done. The back matches the front (${Math.round(score * 100)}% overlap).` : `Auto fit done, but the match is only ${Math.round(score * 100)}%. The back photo may be a different pose or crop, so check the flip and adjust by hand if needed.`)
+      if (!next.front || !next.back) throw new Error('Add both a front photo and a back photo first.')
+      await runFit(next)
     } catch (e) { setErr((e as Error).message) } finally { setBusy('') }
   }
 
@@ -348,8 +354,8 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
           <div className="pickers">
             <div><Drop label="Front photo" id="f-front" onFile={f => pick(f, 'front')} has={!!frontUrl} /><Nudges which="front" /></div>
             <div><Drop label="Back photo (optional)" id="f-back" onFile={f => pick(f, 'back')} has={!!backUrl} onClear={backUrl ? () => { setFaces(x => ({ ...x, back: null })); setDropBack(true) } : undefined} /><Nudges which="back" />
-              <div className="plain-opt"><button type="button" id="f-autofit" className="ghost" disabled={!!busy || !(frontUrl && (faces.back || d.src_paths?.back))} onClick={autoFitBack}>Auto fit back to front</button>
-                {fitNote && <p className="note" id="f-fit-note" role="status">{fitNote}</p>}</div></div>
+              {(faces.front || d.src_paths?.front) && (faces.back || d.src_paths?.back) && !dropBack && <div className="plain-opt"><button type="button" id="f-autofit" className="ghost" disabled={!!busy} onClick={autoFitBack}>Auto fit back to front</button>
+                {fitNote && <p className="note" id="f-fit-note" role="status">{fitNote}</p>}</div>}</div>
           </div>
           <p className="note">Any photo works, even a phone shot on a bed: the background is removed, the piece is cropped, centred on the house frame and lightly warmed, and the back is sized to the front. {method && <b id="f-method">{method}</b>}</p>
           {frontUrl ? (
