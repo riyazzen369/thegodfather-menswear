@@ -105,13 +105,17 @@ let plate: Promise<ImageBitmap> | null = null
 const plateImg = () => plate ??= fetch(new URL('../img/plate.webp', location.href)).then(r => r.blob()).then(b => createImageBitmap(b))
 
 /* place a cut-out on the standard frame. match = the front's placed box (for the back) */
-export async function place(c: Cut, n: Nudge, opts: { photo: boolean; match?: { w: number; h: number } }): Promise<Placed> {
-  const b = bbox(c.bmp)
+/* where the garment's bounding box lands on the 1200x1600 canvas for a nudge */
+function rectOf(c: Cut, n: Nudge, match?: { w: number; h: number }, box?: { x: number; y: number; w: number; h: number }) {
+  const b = box ?? bbox(c.bmp)
   let k = Math.min(CW * MAXW / b.w, CH * MAXH / b.h)
-  if (opts.match) k = Math.min(opts.match.h / b.h, opts.match.w * 1.15 / b.w)
+  if (match) k = Math.min(match.h / b.h, match.w * 1.15 / b.w)
   k *= n.s
   const w = b.w * k, h = b.h * k
-  const x = (CW - w) / 2 + n.x * CW, y = CH * TOP + n.y * CH
+  return { b, w, h, x: (CW - w) / 2 + n.x * CW, y: CH * TOP + n.y * CH }
+}
+export async function place(c: Cut, n: Nudge, opts: { photo: boolean; match?: { w: number; h: number } }): Promise<Placed> {
+  const { b, w, h, x, y } = rectOf(c, n, opts.match)
   const cut = canvas(CW, CH), g = cut.getContext('2d', { willReadFrequently: true })!
   g.imageSmoothingQuality = 'high'; g.drawImage(c.bmp, b.x, b.y, b.w, b.h, x, y, w, h)
   grade(g, CW, CH)
@@ -154,4 +158,47 @@ export async function toneFromUrl(url: string): Promise<string> {
   for (const e of bins.values()) if (e.n > best.n) best = e
   const h = (v: number) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')
   return `#${h(best.r / best.n || best.r)}${h(best.g / best.n || best.g)}${h(best.b / best.n || best.b)}`
+}
+
+/* ---- Auto fit: line the back up with the front -------------------------------------------------------------------
+   Both cut-outs are turned into low-resolution silhouettes on the same canvas grid. The back's size and position
+   (the same Size / Left-right / Up-down nudges you would use by hand) are searched to give the largest overlap with the
+   front silhouette, so after a flip the head, shoulders and hem sit where they were. Pure computation, runs in the browser. */
+const G = 10, GW = CW / G, GH = CH / G
+function subjectMask(c: Cut, b: { x: number; y: number; w: number; h: number }, max = 200) {
+  const k = max / Math.max(b.w, b.h), w = Math.max(2, Math.round(b.w * k)), h = Math.max(2, Math.round(b.h * k))
+  const cv = canvas(w, h), g = cv.getContext('2d', { willReadFrequently: true })!; g.drawImage(c.bmp, b.x, b.y, b.w, b.h, 0, 0, w, h)
+  const d = g.getImageData(0, 0, w, h).data, m = new Uint8Array(w * h)
+  for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3] > 110 ? 1 : 0
+  return { m, w, h }
+}
+function gridOf(mask: { m: Uint8Array; w: number; h: number }, r: { x: number; y: number; w: number; h: number }) {
+  const out = new Uint8Array(GW * GH); let n = 0
+  const gx0 = Math.max(0, Math.floor(r.x / G)), gx1 = Math.min(GW - 1, Math.ceil((r.x + r.w) / G)), gy0 = Math.max(0, Math.floor(r.y / G)), gy1 = Math.min(GH - 1, Math.ceil((r.y + r.h) / G))
+  for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
+    const u = Math.floor(((gx + .5) * G - r.x) / r.w * mask.w), v = Math.floor(((gy + .5) * G - r.y) / r.h * mask.h)
+    if (u >= 0 && v >= 0 && u < mask.w && v < mask.h && mask.m[v * mask.w + u]) { out[gy * GW + gx] = 1; n++ }
+  }
+  return { g: out, n }
+}
+export function autoFit(front: Cut, fn: Nudge, back: Cut): { nudge: Nudge; score: number } {
+  const fr = rectOf(front, fn), fg = gridOf(subjectMask(front, fr.b), fr)
+  const match = { w: fr.w, h: fr.h }, bb = rectOf(back, NUDGE0, match).b, bm = subjectMask(back, bb)
+  const iou = (n: Nudge) => {
+    const r = rectOf(back, n, match, bb), bg = gridOf(bm, r); let inter = 0
+    for (let i = 0; i < fg.g.length; i++) if (fg.g[i] && bg.g[i]) inter++
+    return inter / (fg.n + bg.n - inter || 1)
+  }
+  const clampN = (n: Nudge): Nudge => ({ s: Math.min(1.4, Math.max(0.6, n.s)), x: Math.min(0.2, Math.max(-0.2, n.x)), y: Math.min(0.2, Math.max(-0.2, n.y)) })
+  let best = { n: { ...NUDGE0 }, v: iou(NUDGE0) }
+  const sweep = (c: Nudge, ds: number, dx: number, dy: number, rs: number, rx: number, ry: number) => {
+    for (let s = -rs; s <= rs + 1e-9; s += ds) for (let x = -rx; x <= rx + 1e-9; x += dx) for (let y = -ry; y <= ry + 1e-9; y += dy) {
+      const n = clampN({ s: c.s + s, x: c.x + x, y: c.y + y }), v = iou(n); if (v > best.v) best = { n, v }
+    }
+  }
+  sweep({ s: 1, x: 0, y: 0 }, 0.05, 0.02, 0.02, 0.4, 0.2, 0.2)          // coarse: everywhere the sliders reach
+  sweep(best.n, 0.01, 0.004, 0.004, 0.05, 0.02, 0.02)                    // fine: around the best
+  sweep(best.n, 0.004, 0.0015, 0.0015, 0.012, 0.005, 0.005)              // finest
+  const r = (v: number) => Math.round(v * 1000) / 1000
+  return { nudge: { s: r(best.n.s), x: r(best.n.x), y: r(best.n.y) }, score: best.v }
 }

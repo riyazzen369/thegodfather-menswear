@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
 import { CATEGORIES } from '../data'
 import { liveEnabled, publicUrl, supa, type Row } from '../supa'
-import { plainVars } from '../plain'
-import { toneFromUrl, cutOut, cutFromUrl, place, rawBlob, NUDGE0, type Cut, type Nudge, type Placed } from './normalize'
+import { autoFit, cutOut, cutFromUrl, place, rawBlob, NUDGE0, type Cut, type Nudge, type Placed } from './normalize'
 
 type Draft = Omit<Row, 'id' | 'updated_at'> & { id?: string; updated_at?: string }
 const blank = (sort: number): Draft => ({
@@ -168,7 +167,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
   const [d, setD] = useState<Draft>(draft), [err, setErr] = useState(''), [busy, setBusy] = useState('')
   const [faces, setFaces] = useState<{ front: Face | null; back: Face | null }>({ front: null, back: null })
   const [dropBack, setDropBack] = useState(false)
-  const [plain, setPlain] = useState(!!draft.details.plainBack), [tone, setTone] = useState(draft.details.plainTone || '')
+  const [fitNote, setFitNote] = useState('')
   const [method, setMethod] = useState('')
   const isNew = !draft.id
   const slugTouched = useRef(false)
@@ -194,7 +193,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
       setMethod(cut.method === 'ai' ? 'Background removed automatically.' : cut.method === 'alpha' ? 'Transparent cut-out used as is.' : 'Background model unavailable: plain backdrop keyed out. Check the edges.')
       setBusy('Framing…')
       const next = { ...facesRef.current, [which]: { cut, nudge: { ...NUDGE0 }, placed: null, fresh: true } }
-      if (which === 'back') { setDropBack(false); setPlain(false) }
+      if (which === 'back') { setDropBack(false); setFitNote('') }
       /* editing an existing product's back only: bring in the saved front so the sizes match */
       if (which === 'back' && !next.front && d.src_paths?.front) next.front = { cut: await cutFromUrl(publicUrl(d.src_paths.front)!), nudge: { ...NUDGE0, ...(d.nudge?.front || {}) }, placed: null, fresh: false }
       await layout(next)
@@ -218,11 +217,21 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
   const fp = faces.front?.placed, bp = faces.back?.placed
   const vaultUrl = fp?.photoUrl ?? publicUrl(d.front_path, d.updated_at)
   const frontUrl = fp?.cutUrl ?? publicUrl(d.front_cut_path ?? d.front_path, d.updated_at)
-  const backUrl = plain || dropBack ? undefined : bp?.cutUrl ?? publicUrl(d.back_path, d.updated_at)
-  const makePlain = async () => {
-    if (plain) { setPlain(false); setDropBack(false); return }
-    setFaces(x => ({ ...x, back: null })); setDropBack(true); setPlain(true)
-    if (!tone && frontUrl) { try { setTone(await toneFromUrl(frontUrl)) } catch { setTone('#2a231f') } }
+  const backUrl = dropBack ? undefined : bp?.cutUrl ?? publicUrl(d.back_path, d.updated_at)
+  /* Auto fit: read both photos and line the back's subject up with the front's (size, left/right, up/down) */
+  const autoFitBack = async () => {
+    try {
+      setErr(''); setFitNote(''); setBusy('Reading the front and back photos…')
+      const next = { ...facesRef.current }
+      for (const w of ['front', 'back'] as const) if (!next[w] && d.src_paths?.[w]) next[w] = { cut: await cutFromUrl(publicUrl(d.src_paths[w]!)!), nudge: { ...NUDGE0, ...(d.nudge?.[w] || {}) }, placed: null, fresh: false }
+      if (!next.front || !next.back) throw new Error('Add both a front photo and a back photo first, then press Auto fit.')
+      setBusy('Matching the back to the front… this can take a few seconds')
+      await new Promise(r => setTimeout(r, 30))
+      const { nudge: fit, score } = autoFit(next.front.cut, next.front.nudge, next.back.cut)
+      next.back = { ...next.back, nudge: fit }
+      facesRef.current = next; await layout(next)
+      setFitNote(score >= 0.8 ? `Auto fit done. The back matches the front (${Math.round(score * 100)}% overlap).` : `Auto fit done, but the match is only ${Math.round(score * 100)}%. The back photo may be a different pose or crop, so check the flip and adjust by hand if needed.`)
+    } catch (e) { setErr((e as Error).message) } finally { setBusy('') }
   }
 
   const save = async () => {
@@ -258,9 +267,8 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
         row.nudge = { ...row.nudge, front: F.nudge, frontBox: F.placed.box } as Row['nudge']
         if (F.fresh) { if (d.src_paths?.front) old.push(d.src_paths.front); row.src_paths!.front = await upload(await rawBlob(F.cut), 'front-src') }
       }
-      row.details = { ...row.details }
-      if (plain) { row.details.plainBack = true; row.details.plainTone = tone || undefined } else { delete row.details.plainBack; delete row.details.plainTone }
-      if (B?.placed && !dropBack && !plain) {
+      row.details = { ...row.details }; delete row.details.plainBack; delete row.details.plainTone
+      if (B?.placed && !dropBack) {
         if (d.back_path) old.push(d.back_path)
         row.back_path = await upload(B.placed.cut, 'back'); row.nudge = { ...row.nudge, back: B.nudge }
         if (B.fresh) { if (d.src_paths?.back) old.push(d.src_paths.back); row.src_paths!.back = await upload(await rawBlob(B.cut), 'back-src') }
@@ -340,14 +348,14 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
           <div className="pickers">
             <div><Drop label="Front photo" id="f-front" onFile={f => pick(f, 'front')} has={!!frontUrl} /><Nudges which="front" /></div>
             <div><Drop label="Back photo (optional)" id="f-back" onFile={f => pick(f, 'back')} has={!!backUrl} onClear={backUrl ? () => { setFaces(x => ({ ...x, back: null })); setDropBack(true) } : undefined} /><Nudges which="back" />
-              <div className="plain-opt"><button type="button" id="f-plain" className={`ghost ${plain ? 'on' : ''}`} aria-pressed={plain} disabled={!frontUrl} onClick={makePlain}>{plain ? '✓ Plain back (no design)' : 'Plain back (no design)'}</button>
-                {plain && <label className="tone">Fabric colour <input type="color" id="f-plain-tone" value={/^#[0-9a-f]{6}$/i.test(tone) ? tone : '#2a231f'} onChange={e => setTone(e.target.value)} /> <small>picked from the front, change if needed</small></label>}</div></div>
+              <div className="plain-opt"><button type="button" id="f-autofit" className="ghost" disabled={!!busy || !(frontUrl && (faces.back || d.src_paths?.back))} onClick={autoFitBack}>Auto fit back to front</button>
+                {fitNote && <p className="note" id="f-fit-note" role="status">{fitNote}</p>}</div></div>
           </div>
           <p className="note">Any photo works, even a phone shot on a bed: the background is removed, the piece is cropped, centred on the house frame and lightly warmed, and the back is sized to the front. {method && <b id="f-method">{method}</b>}</p>
           {frontUrl ? (
             <div className="previews">
               <figure className="vault-prev"><div className="vault-frame">{vaultUrl && <img id="prev-vault" src={vaultUrl} alt="In the vault" />}</div><figcaption>In the vault</figcaption></figure>
-              <FlipPreview front={frontUrl} back={backUrl} tone={plain ? tone : ''} />
+              <FlipPreview front={frontUrl} back={backUrl} />
             </div>
           ) : <div className="flip-empty">Add a front photo to preview</div>}
         </div>
@@ -374,7 +382,7 @@ function Drop({ label, id, onFile, has, onClear }: { label: string; id: string; 
 }
 
 /* the same drag-to-flip idea as the site's inspect view, small */
-function FlipPreview({ front, back, tone = '' }: { front: string; back?: string; tone?: string }) {
+function FlipPreview({ front, back }: { front: string; back?: string }) {
   const card = useRef<HTMLDivElement>(null), st = useRef({ a: 0, x0: 0, a0: 0, on: false })
   const [face, setFace] = useState<'front' | 'back'>('front')
   const paint = (a: number, anim: boolean) => { const c = card.current; if (!c) return; c.style.transition = anim ? 'transform .5s cubic-bezier(.2,.8,.2,1)' : 'none'; c.style.transform = `rotateY(${a}deg)` }
@@ -388,7 +396,7 @@ function FlipPreview({ front, back, tone = '' }: { front: string; back?: string;
         <div className="flip-prev-plinth" aria-hidden="true" />
         <div className="flip-prev-card" ref={card}>
           <div className="face f"><img src={front} alt="Front preview" draggable={false} /></div>
-          <div className="face b">{back ? <img src={back} alt="Back preview" draggable={false} /> : <div className="plain" style={{ ...mask, ...plainVars(tone) }} />}</div>
+          <div className="face b">{back ? <img src={back} alt="Back preview" draggable={false} /> : <div className="plain" style={mask} />}</div>
         </div>
       </div>
       <div className="flip-prev-bar"><span>{face === 'front' ? 'Front' : 'Back'} · drag to flip</span><button type="button" className="ghost small" onClick={() => snap(st.current.a + 180)}>Flip</button></div>
