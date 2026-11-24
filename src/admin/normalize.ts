@@ -52,9 +52,47 @@ function keyOut(bmp: ImageBitmap): ImageBitmap | Promise<ImageBitmap> {
 }
 
 let ai: Promise<typeof import('@imgly/background-removal')> | null = null
+/* Tidy a cut-out so it looks finished: drop the stray specks and fragments the background remover leaves around the subject,
+   and (soften) fade the 2px rim where the old backdrop bleeds through as a light halo, then soften the edge a touch. */
+export async function cleanCut(bmp: ImageBitmap, soften: boolean): Promise<ImageBitmap> {
+  const k = Math.min(1, 1800 / Math.max(bmp.width, bmp.height)), w = Math.max(2, Math.round(bmp.width * k)), h = Math.max(2, Math.round(bmp.height * k)), n = w * h
+  const cv = canvas(w, h), g = cv.getContext('2d', { willReadFrequently: true })!; g.drawImage(bmp, 0, 0, w, h)
+  const im = g.getImageData(0, 0, w, h), d = im.data
+  /* connected pieces of the subject (4-neighbours); keep the big ones */
+  const label = new Int32Array(n), stack = new Int32Array(n), sizes: number[] = [0]
+  for (let i = 0; i < n; i++) {
+    if (label[i] || d[i * 4 + 3] <= 128) continue
+    const id = sizes.length; let top = 0, size = 0; stack[top++] = i; label[i] = id
+    while (top) {
+      const p = stack[--top]; size++; const x = p % w
+      if (x > 0 && !label[p - 1] && d[(p - 1) * 4 + 3] > 128) { label[p - 1] = id; stack[top++] = p - 1 }
+      if (x < w - 1 && !label[p + 1] && d[(p + 1) * 4 + 3] > 128) { label[p + 1] = id; stack[top++] = p + 1 }
+      if (p >= w && !label[p - w] && d[(p - w) * 4 + 3] > 128) { label[p - w] = id; stack[top++] = p - w }
+      if (p < n - w && !label[p + w] && d[(p + w) * 4 + 3] > 128) { label[p + w] = id; stack[top++] = p + w }
+    }
+    sizes.push(size)
+  }
+  const biggest = Math.max(0, ...sizes), keepMin = Math.max(150, biggest * 0.006)
+  const kept = new Uint8Array(n); for (let i = 0; i < n; i++) if (label[i] && sizes[label[i]] >= keepMin) kept[i] = 1
+  /* keep soft edge pixels (hair, fabric fringe) that touch a kept piece; everything else goes */
+  const near = (m: Uint8Array, r: number) => { let a = m; for (let t = 0; t < r; t++) { const b = new Uint8Array(n); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; b[i] = a[i] | (x > 0 ? a[i - 1] : 0) | (x < w - 1 ? a[i + 1] : 0) | (y > 0 ? a[i - w] : 0) | (y < h - 1 ? a[i + w] : 0) } a = b } return a }
+  const region = near(kept, 3)
+  for (let i = 0; i < n; i++) if (!region[i]) d[i * 4 + 3] = 0
+  if (soften) {
+    const inv = new Uint8Array(n); for (let i = 0; i < n; i++) inv[i] = kept[i] ? 0 : 1
+    const rim = near(inv, 2)                                  // kept pixels within 2px of the outside
+    for (let i = 0; i < n; i++) if (kept[i] && rim[i]) d[i * 4 + 3] = d[i * 4 + 3] * 0.45
+    const a = new Uint8Array(n); for (let i = 0; i < n; i++) a[i] = d[i * 4 + 3]
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (a[i] === 255 && a[i - 1] === 255 && a[i + 1] === 255 && a[i - w] === 255 && a[i + w] === 255) continue
+      d[i * 4 + 3] = (a[i] * 4 + a[i - 1] + a[i + 1] + a[i - w] + a[i + w] + a[i - w - 1] + a[i - w + 1] + a[i + w - 1] + a[i + w + 1]) / 12 }
+  }
+  g.putImageData(im, 0, 0)
+  return createImageBitmap(cv)
+}
+
 export async function cutOut(file: Blob, onStep?: (s: string) => void): Promise<Cut> {
   const src = await createImageBitmap(file, { imageOrientation: 'from-image' })
-  if (hasAlpha(src)) return { bmp: src, method: 'alpha' }
+  if (hasAlpha(src)) return { bmp: await cleanCut(src, false), method: 'alpha' }
   /* phone photos are huge; the model works at ~1024px anyway */
   const k = Math.min(1, 2000 / Math.max(src.width, src.height))
   const small = canvas(Math.round(src.width * k), Math.round(src.height * k)); small.getContext('2d')!.drawImage(src, 0, 0, small.width, small.height)
@@ -64,12 +102,12 @@ export async function cutOut(file: Blob, onStep?: (s: string) => void): Promise<
     ai ??= import('@imgly/background-removal')
     const { removeBackground } = await ai
     const out = await removeBackground(jpeg, { model: 'isnet_quint8', output: { format: 'image/png' }, progress: (key, cur, tot) => { if (/fetch/.test(key) && tot) onStep?.(`Downloading the background model… ${Math.round(cur / tot * 100)}%`) } })
-    const bmp = await createImageBitmap(out)
+    const bmp = await cleanCut(await createImageBitmap(out), true)
     src.close()
     return { bmp, method: 'ai' }
   } catch (e) {
     console.warn('background model unavailable, using backdrop key', e)
-    const bmp = await keyOut(src); src.close()
+    const bmp = await cleanCut(await keyOut(src), true); src.close()
     return { bmp, method: 'key' }
   }
 }
