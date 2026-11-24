@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { withElite } from './Elite'
+import { WA_ICON, CALL_ICON } from './icons'
 import { CONTACT, ITEMS, SAMPLE_PRICES, STORE, TAILOR, vaultCount, onCatalogue, type Item, type Choice } from './data'
 import Pic, { Mark, preloadPic } from './Pic'
 import Tailor from './Tailor'
@@ -41,8 +42,6 @@ function webglOK() {
   try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')) } catch { return false }
 }
 
-const WA_ICON = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z" /><path d="M9.2 8.6c.3 2.6 2.1 4.6 5.4 5.6l.9-1.3-1.7-.8-.7.7c-1-.4-2-1.4-2.4-2.4l.7-.7-.8-1.7z" /></svg>
-const CALL_ICON = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M6.5 3.5h3l1.5 4-2 1.3a10 10 0 0 0 6.2 6.2l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A16 16 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z" /></svg>
 const Chev = ({ d }: { d: 'l' | 'r' }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={d === 'l' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'} /></svg>
 
 export default function App(_: { rev?: number }) {
@@ -336,7 +335,7 @@ export default function App(_: { rev?: number }) {
     if (viewRef.current === 'walk') landed()
   }, [landed])
   /* the shopkeeper's choices */
-  const leaveTailor = useCallback((to: 'premium' | 'tour' | 'skip' | 'tailoring' | 'visit') => {
+  const leaveTailor = useCallback((to: 'premium' | 'tour' | 'skip' | 'visit') => {
     if (viewRef.current !== 'tailor' || tailorRef.current !== 'in') return
     if (to === 'premium' && vaultCount() === 0) { setOutOfStock(true); return }
     if (to === 'premium' && !reduced && is3D) {
@@ -355,14 +354,13 @@ export default function App(_: { rev?: number }) {
     setTailorPhase('out')
     window.setTimeout(() => {
       if (to === 'tour') toGrid()
-      else if (to === 'tailoring') toGrid('formal')
       else if (to === 'visit') openVault(LAST, false)
       else openVault(0, to === 'premium')
       window.setTimeout(() => setTailorPhase('off'), reduced ? 320 : 520)
     }, reduced ? 0 : 480)
   }, [openVault, toGrid, reduced, is3D, startWalk])
   const choose = useCallback((c: Choice) => leaveTailor(c.id), [leaveTailor])
-  const hostNav = useCallback((n: 'collections' | 'tailoring' | 'visit' | 'private') =>
+  const hostNav = useCallback((n: 'collections' | 'visit' | 'private') =>
     leaveTailor(n === 'collections' ? 'tour' : n === 'private' ? 'premium' : n), [leaveTailor])
   /* from the attire tour straight down to the vault */
   const gridToVault = useCallback(() => {

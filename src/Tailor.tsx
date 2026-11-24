@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { withElite } from './Elite'
-import { CHOICES, HOST, STORE, TAILOR, greeting, type Choice } from './data'
+import { WA_ICON, CALL_ICON } from './icons'
+import { CHOICES, CONTACT, HOST, STORE, TAILOR, greeting, type Choice } from './data'
 import Rain from './Rain'
 import { Mark } from './Pic'
 
@@ -10,7 +11,7 @@ import { Mark } from './Pic'
          'lead' the camera rushes through the glass doors, past the wooden slats, into the private room,
                 where the wardrobe doors slide open on the gold light of the vault below
    quick = repeat visit / called back from the top bar: same scene, shorter build-up. */
-type Nav = 'collections' | 'tailoring' | 'visit' | 'private'
+type Nav = 'collections' | 'visit' | 'private'
 export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
   phase: 'in' | 'out' | 'lead' | 'walk'
   quick: boolean
@@ -21,6 +22,12 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
   const line = useRef(greeting()).current
   const [typed, setTyped] = useState(reduced ? line.length : 0)
   const [done, setDone] = useState(reduced)
+  const [contact, setContact] = useState(false)
+  useEffect(() => {
+    if (!contact) return
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setContact(false); document.getElementById('nav-contacts')?.focus() } }
+    addEventListener('keydown', k, true); return () => removeEventListener('keydown', k, true)
+  }, [contact])
   const stopped = useRef(false)
   const root = useRef<HTMLElement>(null), head = useRef<HTMLDivElement>(null), plate = useRef<HTMLDivElement>(null)
   const T = quick ? { host: 0.25, panel: 0.55, type: 0.8, cps: 70 } : { host: 3.0, panel: 3.4, type: 3.9, cps: 42 }
@@ -94,8 +101,8 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
         <span className="sf-logo" role="img" aria-label="The Godfather"><Mark sizes="(min-width:960px) 78px, 64px" /></span>
         <nav aria-label="Main">
           <button type="button" id="nav-collections" onClick={() => onNav('collections')}>Collections</button>
-          <button type="button" id="nav-tailoring" onClick={() => onNav('tailoring')}>Tailoring</button>
           <button type="button" id="nav-visit" onClick={() => onNav('visit')}>Visit</button>
+          <button type="button" id="nav-contacts" aria-haspopup="dialog" onClick={() => setContact(true)}>Contacts</button>
           <button type="button" id="nav-private" onClick={() => onNav('private')}>Elite wardrobe</button>
         </nav>
       </header>
@@ -135,6 +142,20 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
         <div className="sf-uplight l" /><div className="sf-uplight r" />
       </div>
       <div className="t-gold" aria-hidden="true" />
+          {contact && (
+        <div className="contact-back" onClick={() => setContact(false)}>
+          <div className="oos contact-card" role="dialog" aria-modal="true" aria-labelledby="contact-title" onClick={e => e.stopPropagation()}>
+            <h2 id="contact-title">Contact us</h2>
+            <p>Visit the store, call, or message us to book a fitting.</p>
+            <div className="contact-actions">
+              <a className="btn primary" id="contact-wa" href={`https://wa.me/${CONTACT.whatsapp}?text=${encodeURIComponent('Hello, I would like to visit or book a fitting.')}`} target="_blank" rel="noopener" autoFocus>{WA_ICON}Enquire on WhatsApp</a>
+              <a className="btn ghost" id="contact-call" href={`tel:${CONTACT.phone}`}>{CALL_ICON}Call {CONTACT.phoneLabel}</a>
+              <a className="contact-map" id="contact-map" href={CONTACT.mapsUrl} target="_blank" rel="noopener">{CONTACT.address}</a>
+            </div>
+            <button type="button" className="btn gold" id="contact-close" onClick={() => { setContact(false); document.getElementById('nav-contacts')?.focus() }}>Close</button>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

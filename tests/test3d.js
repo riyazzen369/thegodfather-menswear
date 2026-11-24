@@ -217,6 +217,13 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   ok('desktop: red ring cursor on gate', parseFloat(ring) > .5 && /255, 42, 58/.test(ring), ring);
   await d.locator('#crest').click(); await d.waitForSelector('.tailor.typed', {timeout:60000}); await sleep(900);
   ti = await tailorInfo(d); ok('desktop: shopkeeper scene shown', !!ti && ti.ch.length===2);
+  const navTxt = await d.evaluate(() => [...document.querySelectorAll('.sf-nav nav button')].map(b => b.textContent.trim()).join('|'));
+  ok('storefront nav: Collections, Visit, Contacts, Elite wardrobe (no Tailoring)', navTxt === 'Collections|Visit|Contacts|Elite wardrobe', navTxt);
+  await d.locator('#nav-contacts').click(); await sleep(400);
+  const cc = await d.evaluate(() => ({ dlg: !!document.querySelector('[role=dialog] #contact-wa, #contact-title'), tel: document.getElementById('contact-call')?.getAttribute('href'), wa: document.getElementById('contact-wa')?.getAttribute('href') }));
+  ok('Contacts opens a dialog with WhatsApp and call links', cc.dlg && /^tel:\+/.test(cc.tel) && /wa\.me/.test(cc.wa), JSON.stringify(cc));
+  await d.keyboard.press('Escape'); await sleep(300);
+  ok('Esc closes the Contacts dialog', !(await d.evaluate(() => !!document.getElementById('contact-title'))));
   const host = await d.evaluate(() => ({ ember: document.querySelectorAll('.cig-ember').length, smoke: document.querySelectorAll('.cig-smoke i').length, lids: document.querySelectorAll('.cat-lid').length,
     emberAnim: document.querySelector('.cig-ember')?.getAnimations().length || 0, img: document.querySelector('.sf-host img')?.currentSrc || '', panelR: document.querySelector('.sf-panel').getBoundingClientRect().right, catX: document.querySelector('.sf-host').getBoundingClientRect().left + document.querySelector('.sf-host').getBoundingClientRect().width * 0.3 }));
   ok('desktop: Lorenzo has a live cigar (ember + smoke) and the cat blinks', host.ember===1 && host.smoke===5 && host.lids===2 && host.emberAnim>0 && /lorenzo/.test(host.img), JSON.stringify(host));
