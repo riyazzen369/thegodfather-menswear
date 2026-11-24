@@ -5,6 +5,7 @@ import type { Session, SupabaseClient } from '@supabase/supabase-js'
 import { CATEGORIES } from '../data'
 import { liveEnabled, publicUrl, supa, type Row } from '../supa'
 import { plainVars } from '../plain'
+import { hasModel, modelUrl, saveModel, type View } from './tryon'
 import { toneFromUrl, cutOut, cutFromUrl, place, rawBlob, NUDGE0, type Cut, type Nudge, type Placed } from './normalize'
 
 type Draft = Omit<Row, 'id' | 'updated_at'> & { id?: string; updated_at?: string }
@@ -57,17 +58,45 @@ export default function Admin() {
 }
 
 function Tabbed({ sb }: { sb: SupabaseClient }) {
-  const [tab, setTab] = useState<'products' | 'orders'>(() => location.hash === '#orders' ? 'orders' : 'products')
-  const pick = (t: 'products' | 'orders') => { setTab(t); history.replaceState(null, '', t === 'orders' ? '#orders' : location.pathname + location.search) }
+  const [tab, setTab] = useState<'products' | 'orders' | 'model'>(() => location.hash === '#orders' ? 'orders' : location.hash === '#model' ? 'model' : 'products')
+  const pick = (t: 'products' | 'orders' | 'model') => { setTab(t); history.replaceState(null, '', t === 'products' ? location.pathname + location.search : '#' + t) }
   return (
     <>
       <nav className="adm-tabs" role="tablist" aria-label="Admin sections">
         <button type="button" role="tab" id="tab-products" aria-selected={tab === 'products'} onClick={() => pick('products')}>Products</button>
         <button type="button" role="tab" id="tab-orders" aria-selected={tab === 'orders'} onClick={() => pick('orders')}>Orders</button>
+        <button type="button" role="tab" id="tab-model" aria-selected={tab === 'model'} onClick={() => pick('model')}>Model</button>
       </nav>
       <div hidden={tab !== 'products'}><Catalogue sb={sb} /></div>
       <div hidden={tab !== 'orders'}><Orders sb={sb} /></div>
+      <div hidden={tab !== 'model'}><ModelTab sb={sb} /></div>
     </>
+  )
+}
+
+function ModelTab({ sb }: { sb: SupabaseClient }) {
+  const [have, setHave] = useState<Record<View, boolean>>({ front: false, back: false }), [bust, setBust] = useState(Date.now()), [busy, setBusy] = useState(''), [err, setErr] = useState('')
+  useEffect(() => { Promise.all([hasModel('front'), hasModel('back')]).then(([front, back]) => setHave({ front, back })) }, [bust])
+  const up = async (v: View, f?: File) => {
+    if (!f) return
+    if (!/^image\//.test(f.type)) return setErr('Pick an image file.')
+    try { setErr(''); setBusy(`Saving the ${v} photo…`); await saveModel(sb, v, f); setBust(Date.now()) } catch (e) { setErr((e as Error).message) } finally { setBusy('') }
+  }
+  return (
+    <section id="adm-model">
+      <div className="adm-bar"><h1>Default model</h1></div>
+      <p className="note">One model, shown on every product. Upload a clear, full-length photo from the front and one from behind: same person, plain fitted clothes, neutral standing pose, plain light background. You must own the rights to these photos or have the person's written consent. Products are then dressed on this model from the product editor ("Dress the model").</p>
+      {err && <p className="err" role="alert">{err}</p>}
+      {busy && <p className="note">{busy}</p>}
+      <div className="model-grid">
+        {(['front', 'back'] as View[]).map(v => (
+          <div key={v} className="model-card">
+            <Drop label={`Model, ${v}`} id={`m-${v}`} onFile={f => up(v, f)} has={have[v]} />
+            {have[v] ? <img src={modelUrl(v, bust)} alt={`Default model, ${v}`} /> : <div className="flip-empty">No {v} photo yet</div>}
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
