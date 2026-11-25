@@ -1,7 +1,7 @@
 /* Live product catalogue (Supabase). Read-only on the public site: the anon key + RLS only return published rows.
    Without VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY, or when the database is unreachable, the bundled ITEMS are used. */
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { BUNDLED, ITEMS, type Item, type Category } from './data'
+import { BUNDLED, ITEMS, MAX_ELITE, type Item, type Category } from './data'
 import { REMOTE_LQIP, REMOTE_SMALL } from './Pic'
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL as string | undefined
@@ -32,6 +32,16 @@ export function toItem(r: Row): Item {
     details: { ...DEF, ...(r.details || {}) }
   }
 }
+/* Where each piece belongs. A piece that exists in both collections (same web name or same name) stays only in the Attire Collection:
+   the Elite copy is moved there. The Elite Wardrobe keeps its first MAX_ELITE pieces; any extra Elite piece goes to the Attire Collection. */
+const nameKey = (i: Item) => i.name.trim().toLowerCase().replace(/\s+/g, ' ')
+export function arrange(items: Item[]): Item[] {
+  const attire = items.filter(i => i.collection === 'attire')
+  const slugs = new Set(attire.map(i => i.slug)), names = new Set(attire.map(nameKey))
+  const elite = items.filter(i => i.collection !== 'attire' && !slugs.has(i.slug) && !names.has(nameKey(i)))
+  const extra = elite.slice(MAX_ELITE).map(i => ({ ...i, collection: 'attire' as const }))
+  return [...elite.slice(0, MAX_ELITE), ...attire, ...extra]
+}
 const order = (a: Row, b: Row) => (a.collection === b.collection ? 0 : a.collection === 'premium' ? -1 : 1) || a.sort - b.sort || a.name.localeCompare(b.name)
 /* One plain REST read with the anon key (no supabase-js needed, so the store's first paint never loads the 217 kB client).
    RLS only returns published rows. ok=false means the request failed or timed out (not the same as an empty catalogue). */
@@ -53,14 +63,14 @@ export const fetchCatalogue = (timeoutMs = 8000): Promise<Fetched> => inflight ?
 const keyOf = (l: Item[]) => l.map(i => `${i.slug ?? i.name}:${i.collection ?? 'premium'}`).join('|')
 /* what would apply() do? 'same' | 'content' (same pieces, new data) | 'structure' (pieces added/removed/moved). Does not change anything. */
 export function peek(rows: Row[] | null): 'same' | 'content' | 'structure' {
-  const next = rows ? rows.map(toItem) : BUNDLED
+  const next = rows ? arrange(rows.map(toItem)) : BUNDLED
   if (JSON.stringify(next) === JSON.stringify(ITEMS)) return 'same'
   return keyOf(next) !== keyOf(ITEMS) ? 'structure' : 'content'
 }
 /* swap the catalogue in place; returns the same answer as peek() */
 export function apply(rows: Row[] | null): 'same' | 'content' | 'structure' {
   const kind = peek(rows); if (kind === 'same') return kind
-  const next = rows ? rows.map(toItem) : BUNDLED
+  const next = rows ? arrange(rows.map(toItem)) : BUNDLED
   ITEMS.splice(0, ITEMS.length, ...next)
   for (const it of next) if (it.blur && it.images[0]) REMOTE_LQIP.set(it.images[0].src, it.blur)
   for (const r of rows ?? []) { const sm = (r.details as { front512?: string } | null)?.front512; if (sm && r.front_path) REMOTE_SMALL.set(publicUrl(r.front_path, r.updated_at)!, publicUrl(sm, r.updated_at)!) }
