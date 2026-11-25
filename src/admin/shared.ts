@@ -7,7 +7,7 @@ export const KIND_NAME: Record<Kind, string> = { premium: 'Elite Wardrobe', atti
 export const MAX_PRICE = 99_999_999, MAX_SORT = 9999
 export const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 export const blank = (sort: number, collection: Kind = 'premium'): Draft => ({
-  slug: '', name: '', collection, category: 'formal', price_from: null, sizes: {}, tagline: '', description: '', fabric: '',
+  slug: '', name: '', collection, category: collection === 'attire' ? 'formals' : 'formal', price_from: null, sizes: {}, tagline: '', description: '', fabric: '',
   details: { fit: '', madeToMeasure: '', delivery: '' }, colours: [], front_path: null, extra_paths: [], front_cut_path: null,
   back_path: null, blur: null, nudge: {}, src_paths: {}, sort, published: false
 })

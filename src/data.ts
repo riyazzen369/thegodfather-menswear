@@ -18,7 +18,7 @@ export const SAMPLE_PRICES = true        // set to false once real prices are in
 
 export type Img = { src: string; alt: string; source: 'generated' | 'store photo' }
 /* Used by the tailor's greeting to open the wardrobe at the right piece. */
-export type Category = 'formal' | 'wedding' | 'statement' | 'shirts'
+export type Category = 'formal' | 'wedding' | 'statement' | 'shirts' | 'formals' | 'casual-shirts' | 'jeans' | 'casual-tees' | 'polo-tees' | 'streetwear'
 export type Item = {
   category: Category
   name: string; tagline: string; fabric: string; price: number | null
@@ -125,14 +125,25 @@ export const CHOICES: Choice[] = [
   { id: 'tour', label: 'The Godfather Attire Collection', note: 'Suits · Shirts · Ties · Coats' },
   { id: 'premium', label: 'The Godfather Elite Wardrobe', note: 'Private room · By invitation' }
 ]
-/* Filter chips on the attire tour */
-export const CATEGORIES: { id: Category | 'all'; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'formal', label: 'Suits and formal' },
-  { id: 'shirts', label: 'Shirts' },
-  { id: 'wedding', label: 'Wedding' },
-  { id: 'statement', label: 'Statement pieces' }
+/* The Attire Collection's categories: a product tagged with one of these in the admin sits under that chip. */
+export const ATTIRE_CATEGORIES: { id: Category; label: string }[] = [
+  { id: 'formals', label: 'Formals' },
+  { id: 'casual-shirts', label: 'Casual Shirts' },
+  { id: 'jeans', label: 'Jean Pants' },
+  { id: 'casual-tees', label: 'Casual T-shirts' },
+  { id: 'polo-tees', label: 'Polo T-shirts' },
+  { id: 'streetwear', label: 'Street Wear' }
 ]
+/* Elite pieces keep their older labels (they are not listed in the Attire grid) */
+export const ELITE_CATEGORIES: { id: Category; label: string }[] = [
+  { id: 'formal', label: 'Suits and formal' }, { id: 'wedding', label: 'Wedding' }, { id: 'statement', label: 'Statement pieces' }, { id: 'shirts', label: 'Shirts' }
+]
+/* products saved before these categories existed are filed under the nearest new one */
+const LEGACY: Partial<Record<Category, Category>> = { formal: 'formals', wedding: 'formals', shirts: 'casual-shirts', statement: 'streetwear' }
+export const gridCategory = (c: Category): Category => LEGACY[c] ?? c
+export const categoryLabel = (c: Category) => [...ATTIRE_CATEGORIES, ...ELITE_CATEGORIES].find(x => x.id === c)?.label ?? c
+/* Filter chips on the attire tour */
+export const CATEGORIES: { id: Category | 'all'; label: string }[] = [{ id: 'all', label: 'All' }, ...ATTIRE_CATEGORIES]
 export const HOST = { name: 'Lorenzo', role: 'Your host' }
 /* time-of-day greeting (the user's "Good day, sir." in the afternoon) */
 export function greeting(d = new Date()) {

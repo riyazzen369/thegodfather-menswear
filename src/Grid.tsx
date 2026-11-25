@@ -1,7 +1,7 @@
 import { withElite } from './Elite'
 import Pic from './Pic'
 import { useEffect, useState } from 'react'
-import { CATEGORIES, FOLLOW_URL, ITEMS, SAMPLE_PRICES, inGrid } from './data'
+import { CATEGORIES, FOLLOW_URL, ITEMS, SAMPLE_PRICES, gridCategory, inGrid } from './data'
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 
@@ -16,7 +16,7 @@ export default function Grid({ onOpen, onEnter, inert, initialCat = 'all' }: {
   /* the heading takes focus once the grid is on screen (the app's own focus call can run before React has rendered it) */
   useEffect(() => { document.getElementById('grid-title')?.focus({ preventScroll: true }) }, [])
   const all = ITEMS.map((it, i) => ({ it, i })).filter(x => inGrid(x.it))
-  const list = all.filter(x => cat === 'all' || x.it.category === cat)
+  const list = all.filter(x => cat === 'all' || gridCategory(x.it.category) === cat)
   return (
     <main className="grid-page" id="grid" inert={inert} aria-labelledby="grid-title">
       <header className="grid-head">
