@@ -37,3 +37,39 @@ export const smooth = (a: number, b: number, t: number) => { const x = clamp01((
 
 /* seconds into the premium walk, or -1 when not walking */
 export const walkTime = () => rig.walkAt ? (rig.walkFreeze ?? (performance.now() - rig.walkAt) / 1000) : -1
+
+/* ---------- 360 orbit: the wardrobe pieces sit on a ring around the viewer ----------
+   d = how many pieces a piece is from the focused spot (float, so it flows while dragging). One shared function drives both the
+   3D niches and the DOM pictures, so they stay locked together and every piece moves, turns and scales exactly the same way. */
+export const ORBIT_STEP = 0.6                                  // radians between neighbours on the ring (~34 degrees)
+const ORBIT_SIN = Math.sin(ORBIT_STEP)
+export const ORBIT_TAN = Math.tan(20 * Math.PI / 180)          // half of the 40 degree camera lens
+export function orbitAt(d: number) {
+  const a = Math.abs(d), c = Math.min(a, 3), sg = d < 0 ? -1 : 1, th = c * ORBIT_STEP
+  return {
+    x: sg * (Math.sin(th) / ORBIT_SIN + (a - c) * 0.6),         // sideways, in piece spacings (neighbour = 1)
+    z: (1 - Math.cos(th)) / ORBIT_SIN,                           // how far it curves back, in piece spacings
+    th: sg * th                                                  // turn towards the centre of the ring
+  }
+}
+const lastT = new WeakMap<HTMLElement, string>()
+/* place the DOM pictures (the .stage of each slide) on the ring. p = the focused position in pieces; n = how many pieces (the final slide is left alone) */
+export function applyOrbit(stages: HTMLElement[], p: number, n: number) {
+  const L = rig.layout, W = L.W
+  const pw = Math.min(L.sh, L.sw * 4 / 3) * 0.75
+  const pitch = (0.92 * W - L.sx) + pw * 0.34
+  const Dpx = L.H / (2 * ORBIT_TAN)
+  for (let i = 0; i < n && i < stages.length; i++) {
+    const el = stages[i], d = i - p, a = Math.abs(d)
+    if (a > 2.5) { if (lastT.get(el) !== '') { el.style.transform = ''; el.style.removeProperty('--dim'); el.style.zIndex = ''; lastT.set(el, '') } continue }
+    const o = orbitAt(d), k = Dpx / (Dpx + o.z * pitch)
+    const tx = (W / 2 + (o.x * pitch + L.sx - W / 2) * k) - (L.sx + (i - rig.scrollP) * L.slideW)
+    const tr = a < 0.002 ? '' : `translate3d(${tx.toFixed(2)}px,0,0) perspective(1300px) rotateY(${(o.th * 180 / Math.PI).toFixed(2)}deg) scale(${k.toFixed(4)})`
+    const key = tr + '|' + a.toFixed(3)
+    if (lastT.get(el) === key) continue
+    lastT.set(el, key)
+    el.style.transform = tr
+    el.style.setProperty('--dim', (Math.min(1, a / 1.15) * 0.62).toFixed(3))
+    el.style.zIndex = String(20 - Math.round(a * 6))
+  }
+}
