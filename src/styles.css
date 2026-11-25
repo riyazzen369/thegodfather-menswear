@@ -681,3 +681,14 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .upi .btn{margin:0 0 12px;width:100%}.mono{font-family:ui-monospace,monospace;word-break:break-all}
 .done{display:grid;gap:14px}.done .ref{color:var(--neon)}
 .cart .btn.ghost{background:rgba(7,4,5,.35)}
+
+/* ---------- the entrance: two velvet curtains part on the rainy storefront (replaces the old tap-the-crest gate) ---------- */
+.curtains{position:fixed;inset:0;z-index:60;pointer-events:none;overflow:hidden;contain:strict}
+.cur{position:absolute;top:0;bottom:0;width:51%;background-color:#3a060b;background-size:auto 100%;background-repeat:repeat-x;will-change:transform;
+  box-shadow:0 0 60px rgba(0,0,0,.7);filter:brightness(.92) saturate(1.15)}
+.cur.l{left:0;transform-origin:left center;background-position:left center;animation:curtainL 2s cubic-bezier(.72,0,.22,1) .55s forwards}
+.cur.r{right:0;transform-origin:right center;background-position:right center;animation:curtainR 2s cubic-bezier(.72,0,.22,1) .55s forwards}
+@keyframes curtainL{to{transform:scaleX(.1) translateX(-6%)}}
+@keyframes curtainR{to{transform:scaleX(.1) translateX(6%)}}
+.re #curtains{display:none}
+@media (prefers-reduced-motion:reduce){.curtains{display:none}}

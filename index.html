@@ -26,6 +26,7 @@
     <link rel="manifest" href="./site.webmanifest" />
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"ClothingStore","name":"The Godfather Menswear","url":"https://riyazzen369.github.io/thegodfather-menswear/","image":"https://riyazzen369.github.io/thegodfather-menswear/og-image.jpg","logo":"https://riyazzen369.github.io/thegodfather-menswear/icon-512.png"}</script>
     <link rel="preconnect" href="https://ckjimryyfkbdrynggpnz.supabase.co" crossorigin />
+    <link rel="preload" as="image" href="./tailor/curtain-tall.webp" fetchpriority="high" />
     <link rel="preload" href="/src/fonts/AlfaSlabOne-normal-400.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/src/fonts/InstrumentSans-400_600.woff2" as="font" type="font/woff2" crossorigin />
     <script>/* start the storefront photo (the largest paint) before the JS bundle runs, for first visits AND returning ones (same size rule as STORE() in src/data.ts) */
@@ -34,7 +35,10 @@ try{var w=Math.max(innerWidth,innerHeight*16/9)*Math.min(2,devicePixelRatio||1),
   </head>
   <body>
     <noscript><p style="color:#e8dfcf;font-family:serif;text-align:center;padding:40vh 2rem 0">The wardrobe is private. Please enable JavaScript to enter.</p></noscript>
-    <div id="root"><script>try{if(sessionStorage.getItem('gf-entered'))document.documentElement.classList.add('re')}catch(e){}</script><div class="gate intro" id="boot-gate" aria-hidden="true"><div class="gate-inner"><span class="crest-halo"></span><div class="crest-btn"><span class="half l"><span class="mark neon"><img class="mark-glow" loading="lazy" src="./brand/logo-800.webp" srcset="./brand/logo-160.webp 160w, ./brand/logo-240.webp 240w, ./brand/logo-320.webp 320w, ./brand/logo-800.webp 800w, ./brand/logo.webp 1550w" sizes="min(78vw, 560px)" alt="" width="1550" height="1180" aria-hidden="true"><img class="mark-img" loading="lazy" src="./brand/logo-800.webp" srcset="./brand/logo-160.webp 160w, ./brand/logo-240.webp 240w, ./brand/logo-320.webp 320w, ./brand/logo-800.webp 800w, ./brand/logo.webp 1550w" sizes="min(78vw, 560px)" alt="" width="1550" height="1180"></span></span><span class="half r"><span class="mark neon"><img class="mark-glow" loading="lazy" src="./brand/logo-800.webp" srcset="./brand/logo-160.webp 160w, ./brand/logo-240.webp 240w, ./brand/logo-320.webp 320w, ./brand/logo-800.webp 800w, ./brand/logo.webp 1550w" sizes="min(78vw, 560px)" alt="" width="1550" height="1180" aria-hidden="true"><img class="mark-img" loading="lazy" src="./brand/logo-800.webp" srcset="./brand/logo-160.webp 160w, ./brand/logo-240.webp 240w, ./brand/logo-320.webp 320w, ./brand/logo-800.webp 800w, ./brand/logo.webp 1550w" sizes="min(78vw, 560px)" alt="" width="1550" height="1180"></span></span></div><p class="gate-line">Touch the crest to enter.</p></div></div></div>
+    <div id="root"><script>try{if(sessionStorage.getItem('gf-entered'))document.documentElement.classList.add('re')}catch(e){}</script></div>
+    <div id="curtains" class="curtains" aria-hidden="true"><div class="cur l" style="background-image:url(./tailor/curtain-tall.webp)"></div><div class="cur r" style="background-image:url(./tailor/curtain-tall.webp)"></div></div>
+    <script>/* the entrance: the curtains part by themselves (CSS only); any tap or key skips them */
+(function(){var c=document.getElementById('curtains');if(!c)return;var d=function(){if(c.parentNode)c.parentNode.removeChild(c);removeEventListener('pointerdown',d);removeEventListener('keydown',d)};if(document.documentElement.classList.contains('re'))return d();c.querySelector('.r').addEventListener('animationend',d);addEventListener('pointerdown',d);addEventListener('keydown',d);setTimeout(d,5000)})()</script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
