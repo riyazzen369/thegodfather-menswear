@@ -65,7 +65,7 @@ export default function App(_: { rev?: number }) {
     if (document.readyState === 'complete') arm(); else addEventListener('load', arm, { once: true })
     return () => { done = true; clearTimeout(id); ev.forEach(e => removeEventListener(e, go)); removeEventListener('load', arm) }
   }, [])
-  const [view, setViewState] = useState<'gate' | 'transition' | 'tailor' | 'walk' | 'wardrobe' | 'grid'>(() => store.get('gf-entered') ? 'tailor' : 'gate')
+  const [view, setViewState] = useState<'gate' | 'transition' | 'tailor' | 'walk' | 'wardrobe' | 'grid'>('tailor')
   const viewRef = useRef(view)
   const setView = (v: typeof view) => { viewRef.current = v; rig.view = v; setViewState(v) }
   const [index, setIndexState] = useState(-1)
@@ -78,10 +78,10 @@ export default function App(_: { rev?: number }) {
   const [sheetShown, setSheetShown] = useState(false)
   const sheetRef = useRef<number | null>(null)
   const [sound, setSound] = useState(false)
-  const [gateKey, setGateKey] = useState(0)
+  const [tailorKey, setTailorKey] = useState(0)
   const [fadeBlack, setFadeBlack] = useState(false)
   type Phase = 'off' | 'in' | 'out' | 'lead' | 'walk'
-  const [tailor, setTailor] = useState<Phase>(() => store.get('gf-entered') ? 'in' : 'off')
+  const [tailor, setTailor] = useState<Phase>('in')
   const tailorRef = useRef<Phase>(tailor)
   const setTailorPhase = (p: Phase) => { tailorRef.current = p; setTailor(p) }
   const [tailorQuick, setTailorQuick] = useState(() => !!store.get('gf-entered'))
@@ -89,7 +89,6 @@ export default function App(_: { rev?: number }) {
 
   const track = useRef<HTMLDivElement>(null)
   const live = useRef<HTMLDivElement>(null)
-  const crest = useRef<HTMLButtonElement>(null)
   const returnFocus = useRef<HTMLElement | null>(null)
   const enterTimers = useRef<number[]>([])
 
@@ -413,21 +412,23 @@ export default function App(_: { rev?: number }) {
     }
   }, [finishEnter, setActive, is3D, reduced])
 
+  /* the logo replays the entrance: curtains close over the shop, then part again on Lorenzo */
+  const [curtainKey, setCurtainKey] = useState(0)
   const toGate = useCallback(() => {
     if (sheetRef.current !== null) closeSheet(true)
     setFadeBlack(true)
     window.setTimeout(() => {
-      rig.gateAt = performance.now()
-      setView('gate'); setGateKey(k => k + 1)
+      setTailorQuick(false); setTailorKey(k => k + 1); showTailor()
+      if (!reduced) setCurtainKey(k => k + 1)
       setFadeBlack(false)
-      crest.current?.focus({ preventScroll: true })
     }, reduced ? 150 : 380)
-  }, [reduced])
+  }, [reduced, showTailor])
 
   /* first load: refresh in the same session goes straight to the wardrobe */
   useEffect(() => {
     rig.view = viewRef.current
     rig.gateAt = performance.now()
+    store.set('gf-entered', '1')
   }, [])
 
   /* ---------- warm the cache for the next scenes while the gate is up ---------- */
@@ -667,7 +668,7 @@ export default function App(_: { rev?: number }) {
       {view === 'grid' && <Grid key={gridCat} initialCat={gridCat} onOpen={openSheet} onEnter={gridToVault} inert={sheetShown} />}
       {(view === 'wardrobe' || view === 'grid') && (
         <header className="topbar" inert={sheetShown}>
-            <button className="home" id="home" aria-label="The Godfather. Return to the gate" onClick={toGate}><Mark sizes="(min-width:960px) 80px, 64px" /></button>
+            <button className="home" id="home" aria-label="The Godfather. Replay the entrance" onClick={toGate}><Mark sizes="(min-width:960px) 80px, 64px" /></button>
             {view === 'wardrobe' && <button className="back-shop" id="back-shop" type="button" onClick={callTailor}>
               <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M10 2 2 10l8 8" /></svg>Back to the shop</button>}
             {view === 'wardrobe' && <p className="vault-label" aria-hidden="true">Elite wardrobe · {pad(Math.min(N, Math.max(1, index + 1)))}</p>}
@@ -736,19 +737,12 @@ export default function App(_: { rev?: number }) {
       )}
 
       {/* SCREEN 1 + 2: THE GATE (3D logo behind; this layer holds the accessible tap target) */}
-      {tailor !== 'off' && <Tailor phase={tailor} quick={tailorQuick} reduced={reduced} onChoose={choose} onNav={hostNav} />}
+      {tailor !== 'off' && <Tailor key={tailorKey} phase={tailor} quick={tailorQuick} reduced={reduced} onChoose={choose} onNav={hostNav} />}
 
-      {(view === 'gate' || view === 'transition') && (
-        <div key={gateKey} className={`gate intro ${view === 'transition' ? 'leaving' : ''}`} id="gate" inert={view !== 'gate'}
-          style={gateKey === 0 ? { '--t0': `${-Math.round(performance.now())}ms` } as React.CSSProperties : undefined}>
-          <div className="gate-inner">
-            <span className="crest-halo" aria-hidden="true" />
-            <button className="crest-btn" id="crest" ref={crest} aria-label="The Godfather Menswear. Touch the crest to enter" onClick={enter}>
-              <span className="half l"><Mark glow="neon" sizes="min(78vw, 560px)" /></span>
-              <span className="half r"><Mark glow="neon" sizes="min(78vw, 560px)" /></span>
-            </button>
-            <p className="gate-line" id="gate-line">Touch the crest to enter.</p>
-          </div>
+      {curtainKey > 0 && (
+        <div key={curtainKey} className="curtains" aria-hidden="true">
+          <div className="cur l" style={{ backgroundImage: `url(${TAILOR.curtain})` }} />
+          <div className="cur r" style={{ backgroundImage: `url(${TAILOR.curtain})` }} onAnimationEnd={() => setCurtainKey(0)} />
         </div>
       )}
       {view === 'transition' && <button className="skip" id="skip" onClick={finishEnter}>Skip</button>}

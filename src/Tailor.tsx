@@ -30,7 +30,7 @@ export default function Tailor({ phase, quick, reduced, onChoose, onNav }: {
   }, [contact])
   const stopped = useRef(false)
   const root = useRef<HTMLElement>(null), head = useRef<HTMLDivElement>(null), plate = useRef<HTMLDivElement>(null)
-  const T = quick ? { host: 0.25, panel: 0.55, type: 0.8, cps: 70 } : { host: 3.0, panel: 3.4, type: 3.9, cps: 42 }
+  const T = quick ? { host: 0.25, panel: 0.55, type: 0.8, cps: 70 } : { host: 1.9, panel: 2.3, type: 2.8, cps: 42 }
 
   /* the photo plate covers the screen like object-fit: cover, so the neon/door/floor overlays line up with it */
   useLayoutEffect(() => {
