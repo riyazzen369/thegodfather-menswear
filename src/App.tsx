@@ -54,7 +54,17 @@ export default function App(_: { rev?: number }) {
   const [glMount, setGlMount] = useState(false)
   /* the premium wardrobe has no published pieces: say so instead of opening an empty vault */
   const [outOfStock, setOutOfStock] = useState(false)
-  useEffect(() => { const id = window.setTimeout(() => setGlMount(true), viewRef.current === 'gate' ? 900 : 0); return () => clearTimeout(id) }, [])
+  /* the 3D engine (~360 kB) is not needed to paint the gate or the storefront: it starts after the page has settled
+     (load + idle), or the moment the visitor first touches the page, whichever comes first */
+  useEffect(() => {
+    let done = false, id = 0
+    const go = () => { if (done) return; done = true; clearTimeout(id); ev.forEach(e => removeEventListener(e, go)); setGlMount(true) }
+    const ev = ['pointerdown', 'pointermove', 'keydown', 'touchstart', 'wheel'] as const
+    ev.forEach(e => addEventListener(e, go, { once: true, passive: true }))
+    const arm = () => { id = window.setTimeout(() => { const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(go, { timeout: 2500 }); else go() }, viewRef.current === 'gate' ? 1200 : 2000) }
+    if (document.readyState === 'complete') arm(); else addEventListener('load', arm, { once: true })
+    return () => { done = true; clearTimeout(id); ev.forEach(e => removeEventListener(e, go)); removeEventListener('load', arm) }
+  }, [])
   const [view, setViewState] = useState<'gate' | 'transition' | 'tailor' | 'walk' | 'wardrobe' | 'grid'>(() => store.get('gf-entered') ? 'tailor' : 'gate')
   const viewRef = useRef(view)
   const setView = (v: typeof view) => { viewRef.current = v; rig.view = v; setViewState(v) }
@@ -423,12 +433,13 @@ export default function App(_: { rev?: number }) {
   /* ---------- warm the cache for the next scenes while the gate is up ---------- */
   useEffect(() => {
     const pre = (u: string) => { const i = new Image(); i.decoding = 'async'; i.src = u; i.decode?.().catch(() => {}) }
+    /* wait until the storefront has painted (load + idle): the next scenes must never compete with the first paint */
     const t = window.setTimeout(() => {
       pre(STORE(Math.max(innerWidth, innerHeight * 16 / 9) * Math.min(2, devicePixelRatio || 1)))
-      pre(TAILOR.host); pre(TAILOR.curtain); pre(TAILOR.walk)
+      pre(TAILOR.host); pre(TAILOR.curtain); window.setTimeout(() => pre(TAILOR.walk), 1500)
       const est = innerWidth >= 960 ? Math.min(innerWidth * 0.34, innerHeight * 0.75 - 170) : Math.min(innerWidth * 0.66, innerHeight * 0.56 - 100)
       ITEMS.slice(0, 3).forEach(it => preloadPic(it.images[0].src, est))
-    }, 500)
+    }, 3000)
     return () => clearTimeout(t)
   }, [])
 

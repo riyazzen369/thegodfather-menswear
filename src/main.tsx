@@ -61,12 +61,12 @@ function Root() {
     document.addEventListener('visibilitychange', vis)
     window.addEventListener('online', refetch)
     load()
-    /* realtime needs supabase-js (217 kB): start it on the first input, or after 6 s, not at start-up */
+    /* realtime needs supabase-js (217 kB): start it on the first input, or after 12 s, not at start-up */
     const ev = ['pointermove', 'pointerdown', 'keydown', 'touchstart', 'wheel'] as const
     let rtStarted = false
     const startRt = () => { if (rtStarted || dead) return; rtStarted = true; offRt = subscribe(refetch) }
     ev.forEach(e => window.addEventListener(e, startRt, { once: true, passive: true }))
-    const rtT = window.setTimeout(startRt, 6000)
+    const rtT = window.setTimeout(startRt, 12000)
     return () => {
       dead = true; clearInterval(waitT); clearTimeout(retryT); clearTimeout(debounceT); clearTimeout(rtT)
       document.removeEventListener('visibilitychange', vis); window.removeEventListener('online', refetch)

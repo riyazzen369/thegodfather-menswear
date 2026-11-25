@@ -311,8 +311,9 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
   animation:fadeIn .8s var(--ease) var(--t-panel) both}
 .sf-who{margin:0 0 8px;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
 .sf-who b{color:var(--neon);font-weight:600}
-.sf-say{outline:none;min-height:4.1em}
-.sf-line{margin:0;font-family:var(--slab);font-size:clamp(1.02rem,4.4vw,1.45rem);line-height:1.28}
+.sf-say{--lf:clamp(1.02rem,4.4vw,1.45rem);outline:none;min-height:calc(var(--lf) * 1.28 * 3.1)}  /* room for the lines the greeting types into (3, or 4 on narrow phones), measured in the line's own font size so the panel never grows when fonts arrive */
+.sf-line{margin:0;font-family:var(--slab);font-size:var(--lf);line-height:1.28}
+@media (max-width:399px){.sf-say{min-height:calc(var(--lf) * 1.28 * 4.1)}}
 .caret{display:inline-block;width:.5em;height:1em;margin-left:2px;vertical-align:-.12em;background:var(--neon);animation:blink .9s steps(1) infinite}
 .caret.off{opacity:0;animation:none}
 @keyframes blink{50%{opacity:0}}
@@ -343,7 +344,7 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
   .sf-kicker{font-size:.7rem}
   /* the panel sits just left of Lorenzo, so the cat and the cigar stay in view */
   .sf-panel{left:auto;right:calc(1vw + min(86vh,980px) * .5);bottom:auto;top:31vh;width:min(34vw,450px);padding:20px 22px 18px}
-  .sf-line{font-size:clamp(1.25rem,1.6vw,1.6rem)}
+  .sf-say{--lf:clamp(1.25rem,1.6vw,1.6rem)}
   .sf-host{right:1vw}
   .tailor .skip{top:auto;bottom:26px;right:26px}
 }
