@@ -2,7 +2,7 @@
    house velvet plate. Everything is reviewable: nudge the framing, fix the cut-out, reorder, then save. */
 import { useEffect, useRef, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { CATEGORIES } from '../data'
+import { ATTIRE_CATEGORIES, gridCategory } from '../data'
 import { publicUrl, type Row } from '../supa'
 import { CAP, KIND_NAME, MAX_PRICE, MAX_SORT, slugify, type Draft } from './shared'
 import { cutFromUrl, cutOutRaw, NUDGE0, place, rawBlob, type Cut, type Nudge, type Placed } from './normalize'
@@ -146,7 +146,7 @@ export default function AttireEditor({ sb, draft, onDone }: { sb: SupabaseClient
         }
         final.push({ photo: photo!, src, nudge: s.nudge, fresh: s.fresh, placed: s.placed })
       }
-      const row: Draft = { ...d, slug, name: d.name.trim(), collection: 'attire', src_paths: { ...(d.src_paths || {}), slots: final.map(f => ({ photo: f.photo, src: f.src, nudge: f.nudge })) } as Row['src_paths'] }
+      const row: Draft = { ...d, slug, name: d.name.trim(), collection: 'attire', category: gridCategory(d.category), src_paths: { ...(d.src_paths || {}), slots: final.map(f => ({ photo: f.photo, src: f.src, nudge: f.nudge })) } as Row['src_paths'] }
       row.front_path = final[0].photo
       row.extra_paths = final.slice(1).map((f, k) => ({ path: f.photo, alt: `${row.name}, photo ${k + 2}` }))
       row.back_path = null
@@ -187,8 +187,8 @@ export default function AttireEditor({ sb, draft, onDone }: { sb: SupabaseClient
           <label>Name<input id="f-name" value={d.name} maxLength={80} onChange={e => { set('name', e.target.value); if (isNew && !slugTouched.current) set('slug', slugify(e.target.value)) }} /></label>
           <label>Web name (slug)<input id="f-slug" value={d.slug} onChange={e => { slugTouched.current = true; set('slug', slugify(e.target.value)) }} disabled={!isNew} /></label>
           <div className="row">
-            <label>Category<select id="f-category" value={d.category} onChange={e => set('category', e.target.value as Row['category'])}>
-              {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+            <label>Category (tag)<select id="f-category" value={gridCategory(d.category)} onChange={e => set('category', e.target.value as Row['category'])}>
+              {ATTIRE_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
             <label>Price from (₹)<input id="f-price" inputMode="numeric" value={d.price_from ?? ''} onChange={e => { const v = e.target.value.replace(/\D/g, ''); set('price_from', v ? Math.min(MAX_PRICE, Number(v)) : null) }} placeholder="Empty: price on request" /></label>
           </div>
           <label>Order in the grid<input id="f-sort" inputMode="numeric" value={d.sort} onChange={e => set('sort', Math.min(MAX_SORT, Number(e.target.value.replace(/\D/g, '') || 0)))} /></label>

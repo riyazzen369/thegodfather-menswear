@@ -2,7 +2,7 @@
    Writes are allowed by RLS only for users in public.admins. */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
-import { CATEGORIES } from '../data'
+import { ATTIRE_CATEGORIES, ELITE_CATEGORIES, categoryLabel, gridCategory } from '../data'
 import { MAX_PRICE, MAX_SORT, CAP, KIND_NAME, blank, slugify, inr, type Draft, type Kind } from './shared'
 import AttireEditor from './AttireEditor'
 import { liveEnabled, publicUrl, supa, type Row } from '../supa'
@@ -126,7 +126,7 @@ function Orders({ sb }: { sb: SupabaseClient }) {
 
 function Collection({ sb, kind, rev, bump }: { sb: SupabaseClient; kind: Kind; rev: number; bump: () => void }) {
   const [rows, setRows] = useState<Row[] | null>(null), [err, setErr] = useState(''), [note, setNote] = useState('')
-  const [edit, setEdit] = useState<Draft | null>(null)
+  const [edit, setEdit] = useState<Draft | null>(null), [tag, setTag] = useState<string>('all')
   const other: Kind = kind === 'premium' ? 'attire' : 'premium'
   const load = async () => {
     const { data, error } = await sb.from('products').select('*').order('sort').order('name')
@@ -172,17 +172,23 @@ function Collection({ sb, kind, rev, bump }: { sb: SupabaseClient; kind: Kind; r
       {!rows ? <p className="note">Loading…</p> : kind === 'premium' ? (
         <EliteSlots rows={mine} max={cap} onEdit={r => setEdit(r)} onAdd={add} onReorder={reorder} onMove={move} onToggle={togglePub} canMove={theirs.length < CAP.attire} />
       ) : !mine.length ? <p className="note">No attire products yet. Add the first one.</p> : (
+        <>
+        <div className="tags" role="group" aria-label="Filter by category tag">
+          {[{ id: 'all', label: 'All' }, ...ATTIRE_CATEGORIES].map(c => { const n = c.id === 'all' ? mine.length : mine.filter(r => gridCategory(r.category) === c.id).length
+            return <button key={c.id} type="button" id={`tag-${c.id}`} className={`ghost small ${tag === c.id ? 'on' : ''}`} aria-pressed={tag === c.id} onClick={() => setTag(c.id)}>{c.label} <b>{n}</b></button> })}
+        </div>
         <ul className="adm-list">
-          {mine.map(r => (
+          {mine.filter(r => tag === 'all' || gridCategory(r.category) === tag).map(r => (
             <li key={r.id} className={`six ${r.published ? '' : 'draft'}`} data-slug={r.slug}>
               <span className="thumb" style={r.blur ? { backgroundImage: `url(${r.blur})` } : undefined}>{r.front_path && <img src={publicUrl(r.front_path, r.updated_at)} alt="" loading="lazy" />}</span>
-              <span className="meta"><b>{r.name}</b><span>{CATEGORIES.find(c => c.id === r.category)?.label ?? r.category}{r.price_from != null ? ` · from ${inr.format(r.price_from)}` : ''}</span></span>
+              <span className="meta"><b>{r.name}</b><span>{categoryLabel(r.category)}{r.price_from != null ? ` · from ${inr.format(r.price_from)}` : ''}</span></span>
               <label className="pub"><input type="checkbox" checked={r.published} onChange={() => togglePub(r)} /> {r.published ? 'Live' : 'Hidden'}</label>
               <button type="button" className="ghost small" disabled={theirs.length >= CAP.premium} title={theirs.length >= CAP.premium ? 'The Elite Wardrobe is full (12)' : 'Move this piece to the Elite Wardrobe'} onClick={() => move(r)}>To Elite</button>
               <button type="button" className="ghost" onClick={() => setEdit(r)}>Edit</button>
             </li>
           ))}
         </ul>
+        </>
       )}
     </section>
   )
@@ -205,7 +211,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
   /* (re)place both faces: the back is sized to the front's placed box so the flip lines up */
   const layout = async (f: { front: Face | null; back: Face | null }) => {
     const id = ++run.current
-    const front = f.front ? { ...f.front, placed: await place(f.front.cut, f.front.nudge, { photo: true }) } : null
+    const front = f.front ? { ...f.front, placed: await place(f.front.cut, f.front.nudge, { photo: true, maxBytes: 170_000 }) } : null
     const match = front?.placed?.box ?? (d.nudge as any)?.frontBox
     const back = f.back ? { ...f.back, placed: await place(f.back.cut, f.back.nudge, { photo: false, match }) } : null
     if (id !== run.current) return
@@ -362,7 +368,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
             <label>Collection<select id="f-collection" value={d.collection} onChange={e => set('collection', e.target.value as Row['collection'])}>
               <option value="premium">Elite Wardrobe (12 slots)</option><option value="attire">Attire Collection (up to 45)</option></select></label>
             <label>Category<select id="f-category" value={d.category} onChange={e => set('category', e.target.value as Row['category'])}>
-              {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+              {ELITE_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
           </div>
           <div className="row">
             <label>Price from (₹)<input id="f-price" inputMode="numeric" value={d.price_from ?? ''} onChange={e => { const v = e.target.value.replace(/\D/g, ''); set('price_from', v ? Math.min(MAX_PRICE, Number(v)) : null) }} placeholder="Leave empty: price on request" /></label>

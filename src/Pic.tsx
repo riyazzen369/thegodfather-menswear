@@ -30,10 +30,17 @@ export const lqip = (src: string) => { const p = parts(src); return (p ? LQIP[p.
 /* warm the cache for a picture (same choice of source the <picture> would make) */
 const avifOK = (() => { try { return document.createElement('canvas').toDataURL('image/avif').startsWith('data:image/avif') } catch { return false } })()
 export function preloadPic(src: string, cssW: number) {
-  const p = parts(src); if (!p) return
-  const want = cssW * Math.min(2, devicePixelRatio || 1)
-  const big = want > 560 || !p.small
-  const url = !p.small ? src : avifOK ? `${p.dir}r/${p.name}-${big ? 'full' : '512'}.avif` : big ? src : `${p.dir}r/${p.name}-512.webp`
+  const sm = REMOTE_SMALL.get(src)
+  let url: string
+  if (sm) {
+    /* live photo: warm the exact file the <picture> will pick (512 px copy up to 512 device pixels wide, else the full one) */
+    url = cssW * (devicePixelRatio || 1) <= 512 ? sm : src
+  } else {
+    const p = parts(src); if (!p) return
+    const want = cssW * Math.min(2, devicePixelRatio || 1)
+    const big = want > 560 || !p.small
+    url = !p.small ? src : avifOK ? `${p.dir}r/${p.name}-${big ? 'full' : '512'}.avif` : big ? src : `${p.dir}r/${p.name}-512.webp`
+  }
   if (seen.has(url)) return
   const i = new Image(); i.decoding = 'async'; i.src = url
   i.decode?.().then(() => seen.add(url)).catch(() => {})
@@ -49,7 +56,8 @@ export default function Pic({ src, alt, sizes, load = true, eager = false, lazy 
     const el = img.current
     if (el && el.complete && el.naturalWidth) setLoaded(true)
   }, [load, src])
-  const done = () => { const el = img.current; if (el?.currentSrc) seen.add(el.currentSrc); setLoaded(true) }
+  /* show it only once decoded: no half-painted frame while sliding */
+  const done = () => { const el = img.current; Promise.resolve(el?.decode?.()).catch(() => {}).then(() => { if (el?.currentSrc) seen.add(el.currentSrc); setLoaded(true) }) }
   return (
     <span className={`pic ${loaded ? 'loaded' : ''} ${className}`}>
       {lq && <span className="pic-lq" style={{ backgroundImage: `url(${lq})` }} aria-hidden="true" />}

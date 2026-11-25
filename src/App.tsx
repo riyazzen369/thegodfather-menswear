@@ -96,6 +96,22 @@ export default function App(_: { rev?: number }) {
   useLayoutEffect(() => { measure() })
   /* the on-screen width of a wardrobe piece (CSS px), for picking image sizes ahead of time */
   const garmentW = () => { const L = rig.layout; return Math.min(L.sh, L.sw * 4 / 3) * 0.75 || 400 }
+  /* Every piece of the vault is fetched and decoded in the background (nearest first) as soon as the walk starts, so sliding never waits for a picture. */
+  const [warm, setWarm] = useState(false)
+  useEffect(() => {
+    if (view !== 'walk' && view !== 'wardrobe') { setWarm(false); return }
+    let dead = false, k = 0
+    const from = Math.max(0, indexRef.current), n = vaultCount()
+    const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => Math.abs(a - from) - Math.abs(b - from))
+    const step = () => {
+      if (dead) return
+      if (k >= order.length) { setWarm(true); return }
+      const it = ITEMS[order[k++]]; if (it?.images[0]) preloadPic(it.images[0].src, garmentW())
+      window.setTimeout(step, 90)
+    }
+    const t = window.setTimeout(step, 400)
+    return () => { dead = true; clearTimeout(t) }
+  }, [view])  // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- carousel ---------- */
   const setActive = useCallback((i: number, dir = 1, force = false) => {
@@ -582,7 +598,7 @@ export default function App(_: { rev?: number }) {
               <section key={i} className="slide" data-i={i} role="group" aria-roledescription="slide" aria-label={`Item ${i + 1} of ${N}: ${p.name}`} aria-hidden={!on}>
                 <div className="stage">
                   <Pic className="garment" src={p.images[0].src} alt={p.images[0].alt} sizes={GARMENT_SIZES}
-                    load={i <= loadUpTo || Math.abs(i - index) <= 2} eager={i === index || (index < 0 && i === 0)} />
+                    load={warm || i <= loadUpTo || Math.abs(i - index) <= 2} eager={i === index || (index < 0 && i === 0)} />
                 </div>
                 <div className="copy">
                   <p className="kicker" aria-hidden="true">{pad(i + 1)} <span>/ {pad(N)}</span></p>
