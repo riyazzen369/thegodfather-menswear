@@ -15,6 +15,7 @@
     "test:inspect": "bash tests/run.sh inspect-flip.js",
     "test:rls": "node tests/rls-local.mjs",
     "test:live": "cd tests && node live-catalogue.js",
+    "test:admin": "cd tests && node admin-tabs.js",
     "seed": "node scripts/seed-supabase.mjs",
     "admin:create": "node scripts/create-admin.mjs"
   },

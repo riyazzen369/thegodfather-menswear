@@ -72,3 +72,40 @@ h1 small{font-family:"Instrument Sans",sans-serif;font-size:.5em;color:var(--mut
 [hidden]{display:none!important}
 .plain-opt{margin:10px 0 0;display:grid;gap:8px}.plain-opt .tone{display:flex;align-items:center;gap:10px;font-size:.88em}.plain-opt input[type=color]{width:44px;height:36px;padding:0;border:1px solid rgba(128,128,128,.4);border-radius:8px;background:none}
 .plain-opt button.on{border-color:#f2c46b;box-shadow:0 0 0 1px #f2c46b inset}
+
+/* ---- Elite slots ---- */
+.slots{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.slot{position:relative;display:grid;gap:6px;align-content:start;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:280px}
+.slot.draft{opacity:.65}.slot.drag{opacity:.4}.slot.over{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+.slot-no{position:absolute;top:8px;left:8px;z-index:1;min-width:26px;height:26px;border-radius:13px;background:var(--gold);color:#1a1206;display:grid;place-items:center;font-weight:700;font-size:.85em}
+.grip{position:absolute;top:6px;right:10px;z-index:1;color:var(--mute);font-size:1.3em;cursor:grab}
+.thumb.big{width:100%;height:150px;border-radius:8px}
+.slot-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.slot-sub{color:var(--mute);font-size:.82em}
+.slot-btns{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.slot-btns .pub{margin:0;flex:1}
+.slot.empty{border-style:dashed;place-items:center;min-height:120px;background:transparent}
+.slot-add{background:transparent;color:var(--gold);border:1px dashed var(--gold)}.slot-free{color:var(--mute);font-size:.85em}
+@media (max-width:980px){.slots{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.slots{grid-template-columns:1fr}}
+/* ---- Analytics ---- */
+.viz{--series-1:#3987e5;--series-2:#d95926;--series-3:#199e70;--viz-ink:#efe6dc;--viz-mute:#a39589;--viz-grid:#2c2224}
+.viz-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.viz-tools select{width:auto;margin:0}.visually{position:absolute;left:-9999px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:0 0 16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;gap:2px}
+.kpi-l{color:var(--mute);font-size:.8em;letter-spacing:.04em;text-transform:uppercase}.kpi-v{font-family:"Bodoni Moda",serif;font-weight:400;font-size:1.6em}.kpi-s{color:var(--mute);font-size:.8em}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 12px;min-width:0}
+.panel-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.panel h2,.viz-h{font-size:1em;font-weight:600;margin:0}.viz-h{margin:18px 0 8px}
+.viz-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.viz-grid .panel{margin:0}
+.chart{margin:0}.chart svg{width:100%;height:auto;display:block;touch-action:pan-y}.tip{min-height:1.5em;font-size:.88em;margin-bottom:4px}
+.chart .grid{stroke:var(--viz-grid);stroke-width:1}.chart .ax{fill:var(--viz-mute);font-size:11px}
+.chart .col{fill:var(--series-1)}.chart .col.hot{fill:#6aa6ee}.chart g:focus-visible{outline:2px solid var(--gold)}
+.bars{display:grid;gap:8px}.bar-row{display:grid;grid-template-columns:minmax(70px,30%) 1fr auto;gap:10px;align-items:center;font-size:.88em}
+.bar-l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bar-t{height:14px;background:#1c1517;border-radius:4px;overflow:hidden}.bar-f{display:block;height:100%;border-radius:0 4px 4px 0}
+.bar-v{text-align:right;white-space:nowrap}.bar-v small{color:var(--mute)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.82em;color:var(--mute);margin-bottom:4px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+table.tx{width:100%;border-collapse:collapse;font-size:.86em}.tx th,.tx td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}.tx th{color:var(--mute);font-weight:500}.tx .r{text-align:right}.mono{font-family:ui-monospace,monospace}
+.tx-wrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+@media (max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}.viz-grid{grid-template-columns:1fr}}
+.adm-list li.six{grid-template-columns:54px 1fr auto auto auto}
+.adm-tabs{overflow-x:auto;scrollbar-width:none}.adm-tabs button{flex:0 0 auto;white-space:nowrap}
+.slot.empty{align-content:center;justify-items:center;min-height:110px}.slot.empty .slot-no{top:8px}
+.chart .ax{font-size:8px}

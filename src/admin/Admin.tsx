@@ -4,11 +4,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
 import { CATEGORIES } from '../data'
 import { liveEnabled, publicUrl, supa, type Row } from '../supa'
+import EliteSlots from './Elite'
+import Analytics from './Analytics'
 import { autoFit, cutOut, cutFromUrl, place, rawBlob, NUDGE0, type Cut, type Nudge, type Placed } from './normalize'
 
 type Draft = Omit<Row, 'id' | 'updated_at'> & { id?: string; updated_at?: string }
-const blank = (sort: number): Draft => ({
-  slug: '', name: '', collection: 'premium', category: 'formal', price_from: null, sizes: {}, tagline: '', description: '', fabric: '',
+type Kind = 'premium' | 'attire'
+const CAP: Record<Kind, number> = { premium: 12, attire: 45 }
+const KIND_NAME: Record<Kind, string> = { premium: 'Elite Wardrobe', attire: 'Attire Collection' }
+const blank = (sort: number, collection: Kind = 'premium'): Draft => ({
+  slug: '', name: '', collection, category: 'formal', price_from: null, sizes: {}, tagline: '', description: '', fabric: '',
   details: { fit: '', madeToMeasure: '', delivery: '' }, colours: [], front_path: null, extra_paths: [], front_cut_path: null,
   back_path: null, blur: null, nudge: {}, src_paths: {}, sort, published: false
 })
@@ -56,16 +61,20 @@ export default function Admin() {
 }
 
 function Tabbed({ sb }: { sb: SupabaseClient }) {
-  const [tab, setTab] = useState<'products' | 'orders'>(() => location.hash === '#orders' ? 'orders' : 'products')
-  const pick = (t: 'products' | 'orders') => { setTab(t); history.replaceState(null, '', t === 'orders' ? '#orders' : location.pathname + location.search) }
+  type Tab = 'elite' | 'attire' | 'orders' | 'analytics'
+  const TABS: [Tab, string][] = [['elite', 'Elite wardrobe'], ['attire', 'Attire collection'], ['orders', 'Orders'], ['analytics', 'Sales & payments']]
+  const [tab, setTab] = useState<Tab>(() => (TABS.find(([t]) => location.hash === '#' + t)?.[0]) ?? 'elite')
+  const [rev, setRev] = useState(0), bump = () => setRev(x => x + 1)
+  const pick = (t: Tab) => { setTab(t); history.replaceState(null, '', t === 'elite' ? location.pathname + location.search : '#' + t); if (t === 'analytics' || t === 'orders') bump() }
   return (
     <>
       <nav className="adm-tabs" role="tablist" aria-label="Admin sections">
-        <button type="button" role="tab" id="tab-products" aria-selected={tab === 'products'} onClick={() => pick('products')}>Products</button>
-        <button type="button" role="tab" id="tab-orders" aria-selected={tab === 'orders'} onClick={() => pick('orders')}>Orders</button>
+        {TABS.map(([t, label]) => <button key={t} type="button" role="tab" id={`tab-${t}`} aria-selected={tab === t} onClick={() => pick(t)}>{label}</button>)}
       </nav>
-      <div hidden={tab !== 'products'}><Catalogue sb={sb} /></div>
-      <div hidden={tab !== 'orders'}><Orders sb={sb} /></div>
+      <div hidden={tab !== 'elite'}><Collection sb={sb} kind="premium" rev={rev} bump={bump} /></div>
+      <div hidden={tab !== 'attire'}><Collection sb={sb} kind="attire" rev={rev} bump={bump} /></div>
+      {tab === 'orders' && <Orders sb={sb} key={rev} />}
+      {tab === 'analytics' && <Analytics sb={sb} key={rev} />}
     </>
   )
 }
@@ -100,11 +109,12 @@ function Login({ sb }: { sb: SupabaseClient }) {
   )
 }
 
-type Order = { id: string; ref: string; name: string; phone: string; address: string; pincode: string; payment: string; utr: string | null; items: { name: string; size: string; qty: number }[]; total: number; delivery: string | null; status: string; created_at: string }
+type Order = { id: string; ref: string; name: string; phone: string; address: string; pincode: string; payment: string; utr: string | null; items: { name: string; size: string; qty: number }[]; total: number; delivery: string | null; status: string; created_at: string; paid?: boolean }
 function Orders({ sb }: { sb: SupabaseClient }) {
   const [rows, setRows] = useState<Order[] | null>(null), [err, setErr] = useState('')
   const load = async () => { const { data, error } = await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(100); if (error) setErr(error.message); else { setErr(''); setRows(data as Order[]) } }
   useEffect(() => { load() }, [])
+  const setPaid = async (o: Order, paid: boolean) => { setRows(l => l && l.map(x => x.id === o.id ? { ...x, paid } : x)); const { error } = await sb.from('orders').update({ paid, paid_at: paid ? new Date().toISOString() : null }).eq('id', o.id); if (error) { setErr(error.message); load() } }
   const setStatus = async (o: Order, status: string) => { setRows(l => l && l.map(x => x.id === o.id ? { ...x, status } : x)); const { error } = await sb.from('orders').update({ status }).eq('id', o.id); if (error) { setErr(error.message); load() } }
   return (
     <section id="adm-orders">
@@ -116,6 +126,7 @@ function Orders({ sb }: { sb: SupabaseClient }) {
             <span className="meta" style={{ gridColumn: '1 / 3' }}><b>{o.ref} · {inr.format(o.total)} · {o.payment.toUpperCase()}{o.utr ? ` (${o.utr})` : ''}</b>
               <span>{o.items.map(i => `${i.name} ${i.size}×${i.qty}`).join(', ')}</span>
               <span>{o.name} · {o.phone} · {o.address}, {o.pincode}{o.delivery ? ` · ${o.delivery}` : ''} · {new Date(o.created_at).toLocaleString('en-IN')}</span></span>
+            <label className="pub"><input type="checkbox" checked={!!o.paid} onChange={e => setPaid(o, e.target.checked)} aria-label={`Payment received for ${o.ref}`} /> Paid</label>
             <select value={o.status} onChange={e => setStatus(o, e.target.value)} aria-label={`Status of ${o.ref}`}>{['new', 'confirmed', 'shipped', 'delivered', 'cancelled'].map(x => <option key={x}>{x}</option>)}</select>
           </li>))}</ul>
       )}
@@ -123,35 +134,61 @@ function Orders({ sb }: { sb: SupabaseClient }) {
   )
 }
 
-function Catalogue({ sb }: { sb: SupabaseClient }) {
-  const [rows, setRows] = useState<Row[] | null>(null), [err, setErr] = useState('')
+function Collection({ sb, kind, rev, bump }: { sb: SupabaseClient; kind: Kind; rev: number; bump: () => void }) {
+  const [rows, setRows] = useState<Row[] | null>(null), [err, setErr] = useState(''), [note, setNote] = useState('')
   const [edit, setEdit] = useState<Draft | null>(null)
+  const other: Kind = kind === 'premium' ? 'attire' : 'premium'
   const load = async () => {
-    const { data, error } = await sb.from('products').select('*').order('collection').order('sort').order('name')
+    const { data, error } = await sb.from('products').select('*').order('sort').order('name')
     if (error) setErr(error.message); else { setErr(''); setRows(data as Row[]) }
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [rev])  // eslint-disable-line react-hooks/exhaustive-deps
+  const bySort = (a: Row, b: Row) => a.sort - b.sort || a.name.localeCompare(b.name)
+  const mine = (rows ?? []).filter(r => r.collection === kind).sort(bySort), theirs = (rows ?? []).filter(r => r.collection === other).sort(bySort)
+  const cap = CAP[kind], full = mine.length >= cap
   const togglePub = async (r: Row) => {
     setRows(l => l && l.map(x => x.id === r.id ? { ...x, published: !r.published } : x))
     const { error } = await sb.from('products').update({ published: !r.published }).eq('id', r.id)
     if (error) { setErr(error.message); load() }
   }
-  if (edit) return <Editor sb={sb} draft={edit} onDone={() => { setEdit(null); load() }} />
-  const nextSort = rows && rows.length ? Math.max(...rows.map(r => r.sort)) + 10 : 10
+  const move = async (r: Row) => {
+    if (theirs.length >= CAP[other]) return setErr(`The ${KIND_NAME[other]} already has ${CAP[other]} pieces.`)
+    const sort = Math.max(0, ...theirs.map(x => x.sort)) + 10
+    setRows(l => l && l.map(x => x.id === r.id ? { ...x, collection: other, sort } : x))
+    const { error } = await sb.from('products').update({ collection: other, sort }).eq('id', r.id)
+    if (error) { setErr(error.message); load() } else { setErr(''); setNote(`${r.name} moved to the ${KIND_NAME[other]}.`); bump() }
+  }
+  /* the Elite order: slot 1 is the first piece in the vault. Only the pieces whose position changed are written. */
+  const reorder = async (next: Row[]) => {
+    const changed = next.map((r, i) => ({ r, sort: (i + 1) * 10 })).filter(x => x.r.sort !== x.sort)
+    setRows(l => l && l.map(x => { const c = changed.find(y => y.r.id === x.id); return c ? { ...x, sort: c.sort } : x }))
+    setNote('Saving the new order…')
+    const res = await Promise.all(changed.map(c => sb.from('products').update({ sort: c.sort }).eq('id', c.r.id)))
+    const bad = res.find(r => r.error)
+    if (bad?.error) { setErr(bad.error.message); setNote(''); load() } else { setErr(''); setNote('Order saved. The vault now follows it.') }
+  }
+  if (edit) return <Editor sb={sb} draft={edit} onDone={() => { setEdit(null); bump() }} />
+  const nextSort = mine.length ? Math.max(...mine.map(r => r.sort)) + 10 : 10
+  const add = () => setEdit(blank(nextSort, kind))
   return (
-    <section>
+    <section id={`adm-${kind === 'premium' ? 'elite' : 'attire'}`}>
       <div className="adm-bar">
-        <h1>Products {rows && <small>{rows.filter(r => r.published).length} live · {rows.length} total</small>}</h1>
-        <button type="button" id="adm-new" onClick={() => setEdit(blank(nextSort))}>Add product</button>
+        <h1>{KIND_NAME[kind]} {rows && <small>{mine.filter(r => r.published).length} live · {mine.length} of {cap} {kind === 'premium' ? 'slots' : 'products'} used</small>}</h1>
+        {kind === 'attire' && <button type="button" id="adm-new" disabled={full} title={full ? `The Attire Collection holds up to ${cap} products` : undefined} onClick={add}>{full ? `Full (${cap})` : 'Add product'}</button>}
       </div>
+      {kind === 'premium' && <p className="note">These are the {cap} pieces in the vault, in this order. Drag a piece onto another slot to swap places (or use the arrows). Slot 1 is shown first.</p>}
       {err && <p className="err" role="alert">{err}</p>}
-      {!rows ? <p className="note">Loading…</p> : !rows.length ? <p className="note">No products yet.</p> : (
+      {note && !err && <p className="note" role="status" id="adm-note">{note}</p>}
+      {!rows ? <p className="note">Loading…</p> : kind === 'premium' ? (
+        <EliteSlots rows={mine} max={cap} onEdit={r => setEdit(r)} onAdd={add} onReorder={reorder} onMove={move} onToggle={togglePub} canMove={theirs.length < CAP.attire} />
+      ) : !mine.length ? <p className="note">No attire products yet. Add the first one.</p> : (
         <ul className="adm-list">
-          {rows.map(r => (
-            <li key={r.id} className={r.published ? '' : 'draft'} data-slug={r.slug}>
+          {mine.map(r => (
+            <li key={r.id} className={`six ${r.published ? '' : 'draft'}`} data-slug={r.slug}>
               <span className="thumb" style={r.blur ? { backgroundImage: `url(${r.blur})` } : undefined}>{r.front_path && <img src={publicUrl(r.front_path, r.updated_at)} alt="" loading="lazy" />}</span>
-              <span className="meta"><b>{r.name}</b><span>{r.collection === 'premium' ? 'Elite · vault' : 'Attire'} · {CATEGORIES.find(c => c.id === r.category)?.label ?? r.category}{r.price_from != null ? ` · from ${inr.format(r.price_from)}` : ''}{r.back_path ? ' · back photo' : ''}</span></span>
+              <span className="meta"><b>{r.name}</b><span>{CATEGORIES.find(c => c.id === r.category)?.label ?? r.category}{r.price_from != null ? ` · from ${inr.format(r.price_from)}` : ''}</span></span>
               <label className="pub"><input type="checkbox" checked={r.published} onChange={() => togglePub(r)} /> {r.published ? 'Live' : 'Hidden'}</label>
+              <button type="button" className="ghost small" disabled={theirs.length >= CAP.premium} title={theirs.length >= CAP.premium ? 'The Elite Wardrobe is full (12)' : 'Move this piece to the Elite Wardrobe'} onClick={() => move(r)}>To Elite</button>
               <button type="button" className="ghost" onClick={() => setEdit(r)}>Edit</button>
             </li>
           ))}
@@ -245,6 +282,12 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
     if (!d.name.trim()) return setErr('Give the product a name.')
     if (!slug) return setErr('The name needs at least one letter or number.')
     if (!d.front_path && !fp) return setErr('Add a front photo.')
+    { /* a collection holds a fixed number of pieces */
+      let q = sb.from('products').select('id', { count: 'exact', head: true }).eq('collection', d.collection); if (draft.id) q = q.neq('id', draft.id)
+      const { count, error: ce } = await q
+      if (ce) return setErr(ce.message)
+      if ((count ?? 0) >= CAP[d.collection as Kind]) return setErr(`The ${KIND_NAME[d.collection as Kind]} already has ${CAP[d.collection as Kind]} pieces. Move or delete one first.`)
+    }
     setErr('')
     const uploaded: string[] = [] /* files added by THIS save: removed again if anything fails, so no orphans are left in the public bucket */
     try {
@@ -327,7 +370,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
           <label>Web name (slug)<input id="f-slug" value={d.slug} onChange={e => { slugTouched.current = true; set('slug', slugify(e.target.value)) }} disabled={!isNew} /></label>
           <div className="row">
             <label>Collection<select id="f-collection" value={d.collection} onChange={e => set('collection', e.target.value as Row['collection'])}>
-              <option value="premium">Elite (vault + attire collection)</option><option value="attire">Attire (attire collection only)</option></select></label>
+              <option value="premium">Elite Wardrobe (12 slots)</option><option value="attire">Attire Collection (up to 45)</option></select></label>
             <label>Category<select id="f-category" value={d.category} onChange={e => set('category', e.target.value as Row['category'])}>
               {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
           </div>
