@@ -69,3 +69,14 @@ publicly still counts as distribution. Either keep the repo's source public unde
 
 - `npm run test:rls`: runs the migration in PGlite (Postgres in WASM) and checks every access rule as anon, a signed-in non-admin and an admin (20 checks, offline).
 - `npm run test:live`: builds with a mock Supabase URL and, in Chromium, checks the site reads published rows with the anon key, the grid / sheet / vault / flip view use DB data, a live change appears without reload, an unreachable DB falls back to the bundled pieces, and the admin sign-in plus a phone-style T-shirt front + back (`tests/fixtures/`) through the normaliser: checks the WebP uploads, saved nudges, the 3:4 frame / 11% top / centring, back height = front height, the vault plate photo, and that the store bundle has no background-removal code.
+
+## Tabs (admin page)
+
+- **Elite wardrobe**: exactly 12 slots, in vault order. Drag a piece onto another slot (or use the arrows) to reorder; "To Attire" moves a piece out.
+- **Attire collection**: up to 45 products. Each has up to 4 photos. Every photo is compressed (about 150 KB), cut out of its background, framed
+  and placed on the house velvet plate. A busy photo is handled automatically: the garment is the big central object, objects touching it stay,
+  everything else is left out. **Fix cut-out** lets you tap objects to include or leave out, and paint with Erase / Restore.
+- **Orders**: status and a Paid box per order (needs the `paid` columns, migration `20261125000000_orders_paid.sql`).
+- **Sales & payments**: sales, money received, still to receive, by day/month, payment method, status, best sellers, sizes, a transactions table and CSV.
+
+The first photo upload downloads the background model (about 90 MB, once). Tests: `npm run test:admin`, `npm run test:attire`.
