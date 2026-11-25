@@ -18,7 +18,8 @@ let ROWS = [
   row({ slug: 'tuxedo', name: 'Live Tuxedo', sort: 10, front_cut_path: 'tuxedo/front-cut.webp' }),
   row({ slug: 'camel-coat', name: 'Live Camel Coat', sort: 20, back_path: 'camel-coat/back.webp' }),
   row({ slug: 'velvet', name: 'Live Velvet Blazer', sort: 30 }),
-  row({ slug: 'shirt', name: 'Live Shirt', collection: 'attire', category: 'shirts', sort: 40 })
+  row({ slug: 'shirt', name: 'Live Shirt', collection: 'attire', category: 'shirts', sort: 40 }),
+  row({ slug: 'shirt-elite-copy', name: 'Live  Shirt', sort: 35 })   /* the same piece also entered as Elite: its Elite copy moves to the Attire Collection (kept once) */
 ];
 const FILES = { 'tuxedo/front.webp': 'tuxedo-1.webp', 'tuxedo/front-cut.webp': 'cut/tuxedo-1.webp', 'camel-coat/front.webp': 'camel-overcoat-1.webp',
   'camel-coat/back.webp': 'cut/velvet-blazer-1.webp', 'velvet/front.webp': 'velvet-blazer-1.webp', 'shirt/front.webp': 'shirt-tie-1.webp' };
@@ -40,7 +41,7 @@ async function mockSite(ctx) {
 async function toTour(p) {
   await p.goto(URL, { waitUntil: 'load' });
   await p.waitForSelector('#choice-tour', { timeout: 20000 }); await sleep(300);
-  await p.locator('#choice-tour').click(); await p.waitForSelector('#grid .card', { timeout: 8000 }); await sleep(600);
+  await p.locator('#choice-tour').click(); await p.waitForSelector('#grid .card, #grid-soon, #grid-empty', { timeout: 8000 }); await sleep(600);
 }
 const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-name')].map(n => n.textContent));
 
@@ -66,10 +67,10 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
       const ctx = await newCtx(vp); const p = await ctx.newPage(); watch(p, tag); reads = [];
       await toTour(p);
       let n = await names(p);
-      ok(`${tag}: attire tour shows the live catalogue (3 premium + 1 attire)`, n.join() === 'Live Tuxedo,Live Camel Coat,Live Velvet Blazer,Live Shirt', n.join());
+      ok(`${tag}: attire grid shows the attire piece only, no Elite pieces`, n.join() === 'Live Shirt', n.join());
       ok(`${tag}: reads with the anon key, published only`, reads.length > 0 && reads.every(r => r.key === ANON) && /published=eq\.true/.test(reads[0].url), JSON.stringify(reads[0]));
       const pics = await p.evaluate(() => [...document.querySelectorAll('#grid .card img')].map(i => ({ s: i.currentSrc || i.src, ok: i.complete && i.naturalWidth > 0 })));
-      ok(`${tag}: grid photos come from Supabase Storage and load`, pics.length === 4 && pics.every(x => x.s.includes('/storage/v1/object/public/products/')), JSON.stringify(pics.slice(0, 2)));
+      ok(`${tag}: grid photos come from Supabase Storage and load`, pics.length === 1 && pics.every(x => x.s.includes('/storage/v1/object/public/products/')), JSON.stringify(pics.slice(0, 2)));
       if (tag === 'mobile') await p.screenshot({ path: SH + '30-live-grid-mobile.png' });
       await p.locator('#grid .card[data-i="3"]').click(); await p.waitForSelector('#sheet.open', { timeout: 8000 }).catch(() => {}); await sleep(300);
       const sh = await p.evaluate(() => ({ open: document.querySelector('#sheet')?.classList.contains('open'), t: document.querySelector('#sheet-title')?.textContent, txt: document.querySelector('#sheet')?.innerText || '' }));
@@ -81,7 +82,7 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
       await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await sleep(1800);
       if (!(await p.$('#grid .card'))) { await p.waitForSelector('#choice-tour', { timeout: 20000 }); await p.locator('#choice-tour').click(); await p.waitForSelector('#grid .card'); await sleep(500); }
       n = await names(p);
-      ok(`${tag}: live update applied without reload (rename + new piece)`, n.includes('Velvet Blazer (renamed)') && n.includes('Brand New Piece') && n.length === 5, n.join());
+      ok(`${tag}: live update applied without reload (new attire piece)`, n.includes('Brand New Piece') && n.length === 2 && !n.some(x => /Velvet|Tuxedo|Camel/.test(x)), n.join());
       if (tag === 'desktop') await p.screenshot({ path: SH + '31-live-new-product-desktop.png' });
       ROWS = ROWS.filter(r => r.slug !== 'new-piece').map(r => r.slug === 'velvet' ? { ...r, name: 'Live Velvet Blazer' } : r);
       // vault: premium pieces only; flip view uses the DB back photo, or the shared plain back
@@ -106,13 +107,13 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
     dbDown = true;
     { const ctx = await newCtx({ viewport: { width: 1280, height: 800 } }); const p = await ctx.newPage(); watch(p, 'down');
       await toTour(p); await sleep(3000); const n = await names(p); const src = await p.evaluate(() => window.__catalogue && window.__catalogue.source);
-      ok('DB unreachable: falls back to the 12 bundled pieces', n.length === 12 && !n.some(x => x.startsWith('Live')) && src === 'fallback', n.length + ' ' + src); await ctx.close(); }
+      ok('DB unreachable: falls back to the bundled pieces (Elite only: the grid says coming soon)', n.length === 0 && !!(await p.$('#grid-soon')) && src === 'fallback', n.length + ' ' + src); await ctx.close(); }
     dbDown = false;
 
     // empty catalogue (owner decision): nothing published -> "Out of stock" on the premium wardrobe and a Follow link on the attire tour, never the bundled pieces
     { const keep = ROWS; const ctx = await newCtx({ viewport: { width: 1280, height: 800 } }); const p = await ctx.newPage(); watch(p, 'empty');
       await toTour(p); let n0 = await names(p);
-      ok('empty: before, the grid shows the live pieces', n0.length === 4 && n0.every(x => x.startsWith('Live')), n0.join());
+      ok('empty: before, the grid shows the live attire piece', n0.length === 1 && n0.every(x => x.startsWith('Live')), n0.join());
       ROWS = [];  /* the owner unpublishes everything; the tab regains focus (stands in for the realtime ping) */
       await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
       await p.waitForSelector('#grid-empty', { timeout: 15000 }).catch(() => {});

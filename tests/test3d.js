@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 const URL = process.env.URL || 'http://localhost:8795/';
 require('fs').mkdirSync(require('path').join(__dirname, 'out'), { recursive: true });
-const F = '?force3d';   // keep the 3D path under test instead of the slow-GPU fallback (also on software GL, GL=sw)
+const F = '?force3d&grid=all';   // keep the 3D path under test instead of the slow-GPU fallback (also on software GL, GL=sw)
 const SH = require('path').join(__dirname, '..', 'shots') + '/'; require('fs').mkdirSync(SH, { recursive: true });
 const results = []; const ok = (name, pass, info='') => { results.push({name, pass, info}); console.log((pass?'PASS ':'FAIL ')+name+(info?' — '+info:'')); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -333,6 +333,14 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   await d.locator('#home').click(); await sleep(1600);
   st = await state(d); ok('desktop: logo returns to gate', st.gate);
   await dctx.close();
+
+  // ---------- ATTIRE GRID: Elite pieces are not listed; with no attire pieces it says so ----------
+  { const gctx = await browser.newContext({ viewport:{width:1100,height:800} }); const g = await gctx.newPage(); watch(g,'grid-soon');
+    await g.goto(URL+'?force3d'); await g.evaluate(() => sessionStorage.setItem('gf-entered','1')); await g.reload(); await sleep(4800);
+    await g.locator('#choice-tour').click(); await sleep(1800);
+    const gs = await g.evaluate(() => ({ cards: document.querySelectorAll('#grid .card').length, soon: document.getElementById('grid-soon')?.textContent || '', enter: !!document.getElementById('enter-vault') }));
+    ok('attire grid lists no Elite pieces: coming-soon note and a way into the Elite Wardrobe', gs.cards === 0 && /coming soon/i.test(gs.soon) && gs.enter, JSON.stringify(gs));
+    await gctx.close(); }
 
   // ---------- TABLET ----------
   const tctx = await browser.newContext({ viewport:{width:820,height:1180}, isMobile:true, hasTouch:true });

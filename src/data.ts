@@ -157,3 +157,9 @@ export const FOLLOW_URL = '#'
 const listeners: (() => void)[] = []
 export const onCatalogue = (f: () => void) => { listeners.push(f) }
 export const catalogueChanged = () => listeners.forEach(f => f())
+
+/* The Elite Wardrobe holds at most this many pieces. */
+export const MAX_ELITE = 12
+/* The Attire Collection grid lists attire pieces only: an Elite piece is never shown there. (?grid=all lists everything, for previews and tests.) */
+const GRID_ALL = (() => { try { return new URLSearchParams(location.search).get('grid') === 'all' } catch { return false } })()
+export const inGrid = (it: Item) => GRID_ALL || it.collection === 'attire'
