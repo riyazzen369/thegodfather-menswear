@@ -161,7 +161,7 @@ const watch = (p, tag) => { p.on('console', m => { if (m.type()==='error') errs.
   ok('attire tour heading takes focus', gi.focus==='grid-title', gi.focus);
   await sleep(600); await m.screenshot({path:SH+'16-attire-tour-grid-mobile.png'});
   const chips = await m.evaluate(() => [...document.querySelectorAll('#grid .chips .chip')].map(c => c.textContent));
-  ok('category chips: All, Formals, Casual Shirts, Jean Pants, Casual T-shirts, Polo T-shirts, Street Wear', chips.join('|') === 'All|Formals|Casual Shirts|Jean Pants|Casual T-shirts|Polo T-shirts|Street Wear', chips.join('|'));
+  ok('category chips: All, Formals, Casual Shirts, Jean Pants, Casual T-shirts, Polo T-shirts, Street Wear, Jackets', chips.join('|') === 'All|Formals|Casual Shirts|Jean Pants|Casual T-shirts|Polo T-shirts|Street Wear|Jackets', chips.join('|'));
   await m.locator('#chip-formals').tap(); await sleep(400);
   let nf = await m.evaluate(() => [...document.querySelectorAll('#grid .card-name')].map(n=>n.textContent));
   ok('filter chip: Formals shows the suits and the bandhgala', nf.length===5 && /bandhgala/i.test(nf.join()) && /Tuxedo/.test(nf.join()), nf.join());

@@ -2,7 +2,7 @@
    Writes are allowed by RLS only for users in public.admins. */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
-import { ATTIRE_CATEGORIES, ELITE_CATEGORIES, categoryLabel, gridCategory } from '../data'
+import { ATTIRE_CATEGORIES, ELITE_CATEGORIES, gridCategory } from '../data'
 import { MAX_PRICE, MAX_SORT, CAP, KIND_NAME, blank, slugify, inr, type Draft, type Kind } from './shared'
 import AttireEditor from './AttireEditor'
 import { liveEnabled, publicUrl, supa, type Row } from '../supa'
@@ -141,6 +141,11 @@ function Collection({ sb, kind, rev, bump }: { sb: SupabaseClient; kind: Kind; r
     const { error } = await sb.from('products').update({ published: !r.published }).eq('id', r.id)
     if (error) { setErr(error.message); load() }
   }
+  const retag = async (r: Row, category: string) => {
+    setRows(l => l && l.map(x => x.id === r.id ? { ...x, category: category as Row['category'] } : x))
+    const { error } = await sb.from('products').update({ category }).eq('id', r.id)
+    if (error) { setErr(error.message); load() } else { setErr(''); setNote(`${r.name} is now under ${ATTIRE_CATEGORIES.find(c => c.id === category)?.label}.`) }
+  }
   const move = async (r: Row) => {
     if (theirs.length >= CAP[other]) return setErr(`The ${KIND_NAME[other]} already has ${CAP[other]} pieces.`)
     const sort = Math.max(0, ...theirs.map(x => x.sort)) + 10
@@ -171,23 +176,30 @@ function Collection({ sb, kind, rev, bump }: { sb: SupabaseClient; kind: Kind; r
       {note && !err && <p className="note" role="status" id="adm-note">{note}</p>}
       {!rows ? <p className="note">Loading…</p> : kind === 'premium' ? (
         <EliteSlots rows={mine} max={cap} onEdit={r => setEdit(r)} onAdd={add} onReorder={reorder} onMove={move} onToggle={togglePub} canMove={theirs.length < CAP.attire} />
-      ) : !mine.length ? <p className="note">No attire products yet. Add the first one.</p> : (
+      ) : (
         <>
         <div className="tags" role="group" aria-label="Filter by category tag">
           {[{ id: 'all', label: 'All' }, ...ATTIRE_CATEGORIES].map(c => { const n = c.id === 'all' ? mine.length : mine.filter(r => gridCategory(r.category) === c.id).length
             return <button key={c.id} type="button" id={`tag-${c.id}`} className={`ghost small ${tag === c.id ? 'on' : ''}`} aria-pressed={tag === c.id} onClick={() => setTag(c.id)}>{c.label} <b>{n}</b></button> })}
         </div>
-        <ul className="adm-list">
+        {!mine.length ? <p className="note">No attire products yet. Press Add product, tag it with a category, and it appears under that chip on the shop page.</p> : (
+        <ul className="adm-list cards">
           {mine.filter(r => tag === 'all' || gridCategory(r.category) === tag).map(r => (
-            <li key={r.id} className={`six ${r.published ? '' : 'draft'}`} data-slug={r.slug}>
-              <span className="thumb" style={r.blur ? { backgroundImage: `url(${r.blur})` } : undefined}>{r.front_path && <img src={publicUrl(r.front_path, r.updated_at)} alt="" loading="lazy" />}</span>
-              <span className="meta"><b>{r.name}</b><span>{categoryLabel(r.category)}{r.price_from != null ? ` · from ${inr.format(r.price_from)}` : ''}</span></span>
-              <label className="pub"><input type="checkbox" checked={r.published} onChange={() => togglePub(r)} /> {r.published ? 'Live' : 'Hidden'}</label>
-              <button type="button" className="ghost small" disabled={theirs.length >= CAP.premium} title={theirs.length >= CAP.premium ? 'The Elite Wardrobe is full (12)' : 'Move this piece to the Elite Wardrobe'} onClick={() => move(r)}>To Elite</button>
-              <button type="button" className="ghost" onClick={() => setEdit(r)}>Edit</button>
+            <li key={r.id} className={`card-p ${r.published ? '' : 'draft'}`} data-slug={r.slug}>
+              <span className="thumb tall" style={r.blur ? { backgroundImage: `url(${r.blur})` } : undefined}>{r.front_path && <img src={publicUrl(r.front_path, r.updated_at)} alt="" loading="lazy" />}</span>
+              <b className="cp-name">{r.name}</b>
+              <span className="cp-sub">{r.price_from != null ? `from ${inr.format(r.price_from)}` : 'Price on request'}</span>
+              <label className="cp-tag">Category tag
+                <select aria-label={`Category tag of ${r.name}`} value={gridCategory(r.category)} onChange={e => retag(r, e.target.value)}>
+                  {ATTIRE_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+              <span className="cp-btns">
+                <label className="pub"><input type="checkbox" checked={r.published} onChange={() => togglePub(r)} /> {r.published ? 'Live' : 'Hidden'}</label>
+                <button type="button" className="ghost small" disabled={theirs.length >= CAP.premium} title={theirs.length >= CAP.premium ? 'The Elite Wardrobe is full (12)' : 'Move this piece to the Elite Wardrobe'} onClick={() => move(r)}>To Elite</button>
+                <button type="button" className="ghost small" onClick={() => setEdit(r)}>Edit</button>
+              </span>
             </li>
           ))}
-        </ul>
+        </ul>)}
         </>
       )}
     </section>
