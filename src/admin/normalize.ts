@@ -52,24 +52,124 @@ function keyOut(bmp: ImageBitmap): ImageBitmap | Promise<ImageBitmap> {
 }
 
 let ai: Promise<typeof import('@imgly/background-removal')> | null = null
+/* Tidy a cut-out so it looks finished: drop the stray specks and fragments the background remover leaves around the subject,
+   and (soften) fade the 2px rim where the old backdrop bleeds through as a light halo, then soften the edge a touch. */
+export async function cleanCut(bmp: ImageBitmap, soften: boolean): Promise<ImageBitmap> {
+  const k = Math.min(1, 1800 / Math.max(bmp.width, bmp.height)), w = Math.max(2, Math.round(bmp.width * k)), h = Math.max(2, Math.round(bmp.height * k)), n = w * h
+  const cv = canvas(w, h), g = cv.getContext('2d', { willReadFrequently: true })!; g.drawImage(bmp, 0, 0, w, h)
+  const im = g.getImageData(0, 0, w, h), d = im.data
+  /* connected pieces of the subject (4-neighbours); keep the big ones */
+  const label = new Int32Array(n), stack = new Int32Array(n), sizes: number[] = [0]
+  for (let i = 0; i < n; i++) {
+    if (label[i] || d[i * 4 + 3] <= 128) continue
+    const id = sizes.length; let top = 0, size = 0; stack[top++] = i; label[i] = id
+    while (top) {
+      const p = stack[--top]; size++; const x = p % w
+      if (x > 0 && !label[p - 1] && d[(p - 1) * 4 + 3] > 128) { label[p - 1] = id; stack[top++] = p - 1 }
+      if (x < w - 1 && !label[p + 1] && d[(p + 1) * 4 + 3] > 128) { label[p + 1] = id; stack[top++] = p + 1 }
+      if (p >= w && !label[p - w] && d[(p - w) * 4 + 3] > 128) { label[p - w] = id; stack[top++] = p - w }
+      if (p < n - w && !label[p + w] && d[(p + w) * 4 + 3] > 128) { label[p + w] = id; stack[top++] = p + w }
+    }
+    sizes.push(size)
+  }
+  const biggest = Math.max(0, ...sizes), keepMin = Math.max(150, biggest * 0.006)
+  const kept = new Uint8Array(n); for (let i = 0; i < n; i++) if (label[i] && sizes[label[i]] >= keepMin) kept[i] = 1
+  /* keep soft edge pixels (hair, fabric fringe) that touch a kept piece; everything else goes */
+  const near = (m: Uint8Array, r: number) => { let a = m; for (let t = 0; t < r; t++) { const b = new Uint8Array(n); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; b[i] = a[i] | (x > 0 ? a[i - 1] : 0) | (x < w - 1 ? a[i + 1] : 0) | (y > 0 ? a[i - w] : 0) | (y < h - 1 ? a[i + w] : 0) } a = b } return a }
+  const region = near(kept, 3)
+  for (let i = 0; i < n; i++) if (!region[i]) d[i * 4 + 3] = 0
+  if (soften) {
+    const inv = new Uint8Array(n); for (let i = 0; i < n; i++) inv[i] = kept[i] ? 0 : 1
+    const rim = near(inv, 2)                                  // kept pixels within 2px of the outside
+    for (let i = 0; i < n; i++) if (kept[i] && rim[i]) d[i * 4 + 3] = d[i * 4 + 3] * 0.45
+    const a = new Uint8Array(n); for (let i = 0; i < n; i++) a[i] = d[i * 4 + 3]
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (a[i] === 255 && a[i - 1] === 255 && a[i + 1] === 255 && a[i - w] === 255 && a[i + w] === 255) continue
+      d[i * 4 + 3] = (a[i] * 4 + a[i - 1] + a[i + 1] + a[i - w] + a[i + w] + a[i - w - 1] + a[i - w + 1] + a[i + w - 1] + a[i + w + 1]) / 12 }
+  }
+  g.putImageData(im, 0, 0)
+  return createImageBitmap(cv)
+}
+
+
+/* ---- Matte refinement ---------------------------------------------------------------------------------------------
+   The background model returns a soft, low-resolution mask (it works at ~1024px). This sharpens it against the ORIGINAL photo:
+   a guided filter makes the mask edge follow the real edges in the picture (hair strands, fingers, shoe soles), then the
+   backdrop colour is taken out of the edge pixels so no light halo is left. Only a thin band around the edge is touched. */
+function boxMean(src: Float32Array, w: number, h: number, r: number): Float32Array {
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h), pre = new Float64Array(Math.max(w, h) + 1)
+  for (let y = 0; y < h; y++) {
+    const o = y * w; pre[0] = 0
+    for (let x = 0; x < w; x++) pre[x + 1] = pre[x] + src[o + x]
+    for (let x = 0; x < w; x++) { const lo = Math.max(0, x - r), hi = Math.min(w - 1, x + r); tmp[o + x] = (pre[hi + 1] - pre[lo]) / (hi - lo + 1) }
+  }
+  for (let x = 0; x < w; x++) {
+    pre[0] = 0
+    for (let y = 0; y < h; y++) pre[y + 1] = pre[y] + tmp[y * w + x]
+    for (let y = 0; y < h; y++) { const lo = Math.max(0, y - r), hi = Math.min(h - 1, y + r); out[y * w + x] = (pre[hi + 1] - pre[lo]) / (hi - lo + 1) }
+  }
+  return out
+}
+export async function refineMatte(photo: ImageBitmap | HTMLCanvasElement, coarse: ImageBitmap): Promise<ImageBitmap> {
+  const pw = 'width' in photo ? photo.width : 0, ph = 'height' in photo ? photo.height : 0
+  const k = Math.min(1, 1800 / Math.max(pw, ph)), w = Math.max(2, Math.round(pw * k)), h = Math.max(2, Math.round(ph * k)), n = w * h
+  const cg = canvas(w, h).getContext('2d', { willReadFrequently: true })!; cg.drawImage(photo, 0, 0, w, h)
+  const img = cg.getImageData(0, 0, w, h), d = img.data
+  const ag = canvas(w, h).getContext('2d', { willReadFrequently: true })!; ag.drawImage(coarse, 0, 0, w, h)
+  const ad = ag.getImageData(0, 0, w, h).data
+  const I = new Float32Array(n), P = new Float32Array(n), bin = new Float32Array(n)
+  for (let i = 0; i < n; i++) { I[i] = (0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]) / 255; P[i] = ad[i * 4 + 3] / 255; bin[i] = P[i] > 0.5 ? 1 : 0 }
+  const r = Math.max(4, Math.round(Math.max(w, h) / 220)), eps = 2e-4
+  const mI = boxMean(I, w, h, r), mP = boxMean(P, w, h, r)
+  const Ip = new Float32Array(n), II = new Float32Array(n); for (let i = 0; i < n; i++) { Ip[i] = I[i] * P[i]; II[i] = I[i] * I[i] }
+  const cIp = boxMean(Ip, w, h, r), cII = boxMean(II, w, h, r)
+  const A = new Float32Array(n), B = new Float32Array(n)
+  for (let i = 0; i < n; i++) { const v = cII[i] - mI[i] * mI[i], c = cIp[i] - mI[i] * mP[i]; A[i] = c / (v + eps); B[i] = mP[i] - A[i] * mI[i] }
+  const mA = boxMean(A, w, h, r), mB = boxMean(B, w, h, r)
+  /* only the band around the coarse edge is refined; flat areas keep the model's decision */
+  const band = boxMean(bin, w, h, r * 2)
+  const al = new Float32Array(n)
+  for (let i = 0; i < n; i++) {
+    if (band[i] < 0.01) { al[i] = 0; continue }
+    if (band[i] > 0.99) { al[i] = 1; continue }
+    const q = mA[i] * I[i] + mB[i], t = Math.min(1, Math.max(0, (q - 0.3) / 0.4)); al[i] = t * t * (3 - 2 * t)
+  }
+  /* backdrop colour near each edge pixel (from the pixels the mask calls background), then un-mix it: F = (I - (1-a)·B) / a */
+  const bgm = new Float32Array(n); for (let i = 0; i < n; i++) bgm[i] = al[i] < 0.02 && band[i] < 0.99 ? 1 : 0
+  const rd = r * 3, wB = boxMean(bgm, w, h, rd), cr = new Float32Array(n), cgc = new Float32Array(n), cb = new Float32Array(n)
+  for (let i = 0; i < n; i++) if (bgm[i]) { cr[i] = d[i * 4]; cgc[i] = d[i * 4 + 1]; cb[i] = d[i * 4 + 2] }
+  const mr = boxMean(cr, w, h, rd), mg = boxMean(cgc, w, h, rd), mb = boxMean(cb, w, h, rd)
+  for (let i = 0; i < n; i++) {
+    const a = al[i], o = i * 4
+    if (a > 0.02 && a < 0.98 && wB[i] > 0.02) {
+      const br = mr[i] / wB[i], bg = mg[i] / wB[i], bb = mb[i] / wB[i], aa = Math.max(a, 0.35)
+      d[o] = Math.max(0, Math.min(255, (d[o] - (1 - a) * br) / aa)); d[o + 1] = Math.max(0, Math.min(255, (d[o + 1] - (1 - a) * bg) / aa)); d[o + 2] = Math.max(0, Math.min(255, (d[o + 2] - (1 - a) * bb) / aa))
+    }
+    d[o + 3] = a < 0.04 ? 0 : Math.round(a * 255)
+  }
+  cg.putImageData(img, 0, 0)
+  return createImageBitmap(cg.canvas)
+}
+
 export async function cutOut(file: Blob, onStep?: (s: string) => void): Promise<Cut> {
   const src = await createImageBitmap(file, { imageOrientation: 'from-image' })
-  if (hasAlpha(src)) return { bmp: src, method: 'alpha' }
+  if (hasAlpha(src)) return { bmp: await cleanCut(src, false), method: 'alpha' }
   /* phone photos are huge; the model works at ~1024px anyway */
   const k = Math.min(1, 2000 / Math.max(src.width, src.height))
   const small = canvas(Math.round(src.width * k), Math.round(src.height * k)); small.getContext('2d')!.drawImage(src, 0, 0, small.width, small.height)
   const jpeg = await new Promise<Blob>(r => small.toBlob(b => r(b!), 'image/png'))
   try {
-    onStep?.('Removing the background (first time downloads the model, ~40 MB)…')
+    onStep?.('Removing the background (first time downloads the model, ~90 MB)…')
     ai ??= import('@imgly/background-removal')
     const { removeBackground } = await ai
-    const out = await removeBackground(jpeg, { model: 'isnet_quint8', output: { format: 'image/png' }, progress: (key, cur, tot) => { if (/fetch/.test(key) && tot) onStep?.(`Downloading the background model… ${Math.round(cur / tot * 100)}%`) } })
-    const bmp = await createImageBitmap(out)
+    const run = (model: 'isnet_fp16' | 'isnet_quint8') => removeBackground(jpeg, { model, output: { format: 'image/png' }, progress: (key, cur, tot) => { if (/fetch/.test(key) && tot) onStep?.(`Downloading the background model… ${Math.round(cur / tot * 100)}%`) } })
+    /* the larger, more accurate model first; the small one if that cannot load */
+    const out = await run('isnet_fp16').catch(() => run('isnet_quint8'))
+    const bmp = await cleanCut(await refineMatte(small, await createImageBitmap(out)), false)
     src.close()
     return { bmp, method: 'ai' }
   } catch (e) {
     console.warn('background model unavailable, using backdrop key', e)
-    const bmp = await keyOut(src); src.close()
+    const bmp = await cleanCut(await refineMatte(src, await keyOut(src)), false); src.close()
     return { bmp, method: 'key' }
   }
 }
