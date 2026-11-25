@@ -186,11 +186,12 @@ export default function AttireEditor({ sb, draft, onDone }: { sb: SupabaseClient
         <div className="adm-form">
           <label>Name<input id="f-name" value={d.name} maxLength={80} onChange={e => { set('name', e.target.value); if (isNew && !slugTouched.current) set('slug', slugify(e.target.value)) }} /></label>
           <label>Web name (slug)<input id="f-slug" value={d.slug} onChange={e => { slugTouched.current = true; set('slug', slugify(e.target.value)) }} disabled={!isNew} /></label>
-          <div className="row">
-            <label>Category (tag)<select id="f-category" value={gridCategory(d.category)} onChange={e => set('category', e.target.value as Row['category'])}>
-              {ATTIRE_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
-            <label>Price from (₹)<input id="f-price" inputMode="numeric" value={d.price_from ?? ''} onChange={e => { const v = e.target.value.replace(/\D/g, ''); set('price_from', v ? Math.min(MAX_PRICE, Number(v)) : null) }} placeholder="Empty: price on request" /></label>
-          </div>
+          <fieldset className="cat-tags"><legend>Category tag (the shop page chip this product sits under)</legend>
+            <div role="radiogroup" aria-label="Category tag">
+              {ATTIRE_CATEGORIES.map(c => <button key={c.id} type="button" role="radio" id={`f-cat-${c.id}`} aria-checked={gridCategory(d.category) === c.id} className={`ghost small ${gridCategory(d.category) === c.id ? 'on' : ''}`} onClick={() => set('category', c.id)}>{c.label}</button>)}
+            </div>
+          </fieldset>
+          <label>Price from (₹)<input id="f-price" inputMode="numeric" value={d.price_from ?? ''} onChange={e => { const v = e.target.value.replace(/\D/g, ''); set('price_from', v ? Math.min(MAX_PRICE, Number(v)) : null) }} placeholder="Empty: price on request" /></label>
           <label>Order in the grid<input id="f-sort" inputMode="numeric" value={d.sort} onChange={e => set('sort', Math.min(MAX_SORT, Number(e.target.value.replace(/\D/g, '') || 0)))} /></label>
           <fieldset className="stock"><legend>Stock by size (leave all blank = every size on sale; blank or 0 for a size = sold out)</legend>
             <div className="row5">{['S', 'M', 'L', 'XL', 'XXL'].map(z => (

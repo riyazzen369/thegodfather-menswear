@@ -18,7 +18,7 @@ export const SAMPLE_PRICES = true        // set to false once real prices are in
 
 export type Img = { src: string; alt: string; source: 'generated' | 'store photo' }
 /* Used by the tailor's greeting to open the wardrobe at the right piece. */
-export type Category = 'formal' | 'wedding' | 'statement' | 'shirts' | 'formals' | 'casual-shirts' | 'jeans' | 'casual-tees' | 'polo-tees' | 'streetwear'
+export type Category = 'formal' | 'wedding' | 'statement' | 'shirts' | 'formals' | 'casual-shirts' | 'jeans' | 'casual-tees' | 'polo-tees' | 'streetwear' | 'jackets'
 export type Item = {
   category: Category
   name: string; tagline: string; fabric: string; price: number | null
@@ -132,7 +132,8 @@ export const ATTIRE_CATEGORIES: { id: Category; label: string }[] = [
   { id: 'jeans', label: 'Jean Pants' },
   { id: 'casual-tees', label: 'Casual T-shirts' },
   { id: 'polo-tees', label: 'Polo T-shirts' },
-  { id: 'streetwear', label: 'Street Wear' }
+  { id: 'streetwear', label: 'Street Wear' },
+  { id: 'jackets', label: 'Jackets' }
 ]
 /* Elite pieces keep their older labels (they are not listed in the Attire grid) */
 export const ELITE_CATEGORIES: { id: Category; label: string }[] = [
