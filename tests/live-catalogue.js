@@ -173,11 +173,11 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
     await a.fill('#adm-email', 'owner@example.com'); await a.fill('#adm-password', 'wrong'); await a.click('button[type=submit]'); await sleep(800);
     ok('admin: wrong password is refused', /Wrong email or password/.test(await a.innerText('body')));
     await a.fill('#adm-password', 'right-password'); await a.click('button[type=submit]');
-    await a.waitForSelector('.adm-list li', { timeout: 10000 }); await sleep(800);
-    const li = await a.$$eval('.adm-list li', l => l.map(x => x.dataset.slug));
-    ok('admin: product list after sign-in', li.length === ROWS.length, li.join());
+    await a.waitForSelector('#adm-elite .slot', { timeout: 10000 }); await sleep(800);
+    const li = await a.$$eval('#adm-elite .slot:not(.empty)', l => l.map(x => x.dataset.slug));
+    ok('admin: Elite slots after sign-in', li.length === ROWS.filter(r => r.collection === 'premium').length, li.join());
     await a.screenshot({ path: SH + '32-admin-list.png' });
-    await a.click('#adm-new'); await a.fill('#f-name', 'Midnight Test Tee'); await a.fill('#f-price', '4500'); await a.selectOption('#f-collection', 'premium');
+    await a.click('#elite-add'); await a.fill('#f-name', 'Midnight Test Tee'); await a.fill('#f-price', '4500'); await a.selectOption('#f-collection', 'premium');
     await a.fill('#f-tagline', 'A phone photo, normalised.'); await a.check('#f-published');
     const T0 = Date.now();
     await a.setInputFiles('#f-front', path.join(__dirname, 'fixtures/tee-front-phone.jpg'));
@@ -193,7 +193,7 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
     await a.mouse.move(bb.x + bb.width * 0.3, bb.y + bb.height / 2); await a.mouse.down(); await a.mouse.move(bb.x + bb.width * 0.3 + 200, bb.y + bb.height / 2, { steps: 10 }); await a.mouse.up(); await sleep(700);
     ok('admin: drag-to-flip preview shows the back', /Back/.test(await a.innerText('.flip-prev-bar')) && !!(await a.$('.flip-prev-card .face.b img')));
     await a.screenshot({ path: SH + '34-admin-flip-back.png' });
-    await a.click('#f-save'); await a.waitForSelector('.adm-list li', { timeout: 30000 }); await sleep(400);
+    await a.click('#f-save'); await a.waitForSelector('#adm-elite .slot:not(.empty)', { timeout: 30000 }); await sleep(400);
     const byName = n => A.uploads.find(u => new RegExp(`^midnight-test-tee/${n}-[a-z0-9]+\\.webp$`).test(u.path));
     const files = ['front', 'front-cut', 'front-src', 'back', 'back-src'];
     ok('admin: uploads photo, cut-outs and raw sources as WebP with the user token', files.every(n => byName(n) && byName(n).webp && /^Bearer e30\./.test(byName(n).auth || '')), JSON.stringify(A.uploads.map(u => u.path + ':' + u.webp)));
@@ -217,7 +217,7 @@ print(json.dumps(o))`}).toString());
     ok('normalised front: 3:4, top ~11%, centred, within the 72%x76% frame (x1.04 nudge)', fc.W * 4 === fc.H * 3 && Math.abs(fc.top - 0.11) < 0.015 && Math.abs(fc.cx - 0.5) < 0.02 && fc.w <= 0.72 * 1.05 + 0.01 && fc.h <= 0.76 * 1.05 + 0.01 && fc.bgClear < 5, JSON.stringify(fc));
     ok('normalised back: same height as the front (flip lines up), nudged up 1%', Math.abs(bk.h - fc.h) < 0.02 && Math.abs(bk.top - (0.11 - 0.01)) < 0.015 && Math.abs(bk.cx - 0.5) < 0.03, JSON.stringify(bk));
     ok('vault photo: 864x1152 on the red-velvet plate', geo.front.W === 864 && geo.front.H === 1152 && geo.front.red > 0.1, JSON.stringify(geo.front));
-    const li2 = await a.$$eval('.adm-list li', l => l.map(x => x.dataset.slug));
+    const li2 = await a.$$eval('#adm-elite .slot:not(.empty)', l => l.map(x => x.dataset.slug));
     ok('admin: new product appears in the list', li2.includes('midnight-test-tee'), li2.join());
     ok('admin: the allow-list is checked after sign-in', (A.adminReads || 0) >= 1, String(A.adminReads));
     /* a signed-in account that is not on the allow-list gets a clear message and no catalogue */
