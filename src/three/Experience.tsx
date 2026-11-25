@@ -5,7 +5,7 @@ import { EffectComposer, Bloom, Noise, Vignette, DepthOfField } from '@react-thr
 import { BlendFunction, type DepthOfFieldEffect } from 'postprocessing'
 import * as THREE from 'three'
 import { ITEMS, STORE, TAILOR, vaultCount, onCatalogue } from '../data'
-import { rig, easeInOut, easeOut, clamp01, smooth, WALK_MS, walkTime } from '../rig'
+import { rig, easeInOut, easeOut, clamp01, smooth, WALK_MS, walkTime, orbitAt, applyOrbit } from '../rig'
 
 /* ---------------- world constants ---------------- */
 const FOV = 40
@@ -937,6 +937,7 @@ function Piece({ i }: { i: number }) {
   const plMat = useMemo(() => new THREE.MeshBasicMaterial({ color: new THREE.Color(0.07, 0.055, 0.045) }), [])
   const ringMat = useMemo(() => new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.72, 0.3), toneMapped: false }), [])
   const st = useRef({ a: 0, s: 0 })
+  const cam = useThree(t => t.camera)
   useFrame((_, dt) => {
     const s = st.current
     const w = world(), active = rig.index === i && rig.view !== 'gate'
@@ -949,7 +950,12 @@ function Piece({ i }: { i: number }) {
       s.a = Math.max(0, s.a - dt / 0.45)
       s.s = Math.max(0, s.s - dt / 0.45)
     }
-    g.current!.position.set(i * w.spacing, 0, 0)
+    /* on the 360 ring: placed from where the camera really is (same value the DOM pictures use), so niche and picture never drift apart */
+    const onRail = rig.view === 'wardrobe' && walkTime() < 0 && !!cam
+    const pe = onRail ? (cam.position.x - w.camOffset) / w.spacing : rig.scrollP
+    const o = orbitAt(i - pe)
+    g.current!.position.set((onRail ? pe : rig.scrollP) * w.spacing + o.x * w.spacing, 0, -o.z * w.spacing)
+    g.current!.rotation.y = -o.th
     const pr = w.pieceW * 0.4, ph = w.pieceH * 0.05
     plinth.current!.position.set(0, w.floorY + ph / 2, PZ + 0.05); plinth.current!.scale.set(pr, ph, pr * 0.55)
     ring.current!.position.set(0, w.floorY + ph + 0.004, PZ + 0.05); ring.current!.scale.set(pr, pr * 0.55, 1)
@@ -1047,28 +1053,16 @@ function Health({ onFail }: { onFail: (why: string) => void }) {
 }
 /* keep the DOM pictures on their 3D anchors: the rail's pitch and the camera's glide differ from the scroll track's */
 function DomSync() {
-  const last = useRef<number[]>([])
   const els = useRef<HTMLElement[]>([])
-  useEffect(() => () => { document.querySelectorAll<HTMLElement>('.track .stage').forEach(el => { el.style.transform = '' }) }, [])
+  useEffect(() => () => { document.querySelectorAll<HTMLElement>('.track .stage').forEach(el => { el.style.transform = ''; el.style.zIndex = ''; el.style.removeProperty('--dim') }) }, [])
   useFrame(({ camera }) => {
     if (rig.view !== 'wardrobe') return
     if (!els.current.length || !els.current[0].isConnected) els.current = Array.from(document.querySelectorAll<HTMLElement>('.track .stage'))
-    const els_ = els.current, w = world()
-    const sp = (camera.position.x - w.camOffset) / w.spacing, pitch = w.spacing / w.unit, slideW = rig.layout.slideW
-    const dy = camera.position.y / w.unit * 0.5
-    els_.forEach((el, i) => {
-      /* only pieces near the camera move; translating far ones would widen the track's scroll area and feed back into the scroll */
-      if (i >= LAST || Math.abs(i - sp) > 2.5) { if (last.current[i] !== 0) { el.style.transform = ''; last.current[i] = 0 } return }
-      const tx = (i - sp) * pitch - (i - rig.scrollP) * slideW
-      if (Math.abs(tx - (last.current[i] ?? 1e9)) > 0.05 || Math.abs(dy - (last.current[100] ?? 1e9)) > 0.05) {
-        el.style.transform = `translate3d(${tx.toFixed(2)}px,${dy.toFixed(2)}px,0)`; last.current[i] = tx
-      }
-    })
-    last.current[100] = dy
+    const w = world()
+    applyOrbit(els.current, (camera.position.x - w.camOffset) / w.spacing, LAST)
   })
   return null
 }
-/* depth of field: shallow during the walk, gentle in the vault (background brass softens behind the pieces) */
 function Focus({ fx }: { fx: { current: DepthOfFieldEffect | null } }) {
   useFrame(() => {
     const e = fx.current; if (!e) return

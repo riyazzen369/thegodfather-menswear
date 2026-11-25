@@ -6,7 +6,7 @@ import { CONTACT, ITEMS, SAMPLE_PRICES, STORE, TAILOR, vaultCount, onCatalogue, 
 import Pic, { Mark, preloadPic } from './Pic'
 import Tailor from './Tailor'
 import Grid from './Grid'
-import { rig, TRANSITION_MS, WALK_MS } from './rig'
+import { rig, TRANSITION_MS, WALK_MS, applyOrbit } from './rig'
 
 const Experience = lazy(() => import('./three/Experience'))
 const Inspect = lazy(() => import('./Inspect'))
@@ -177,8 +177,18 @@ export default function App(_: { rev?: number }) {
   /* 3D drives the rail from its own frame (before the camera and pictures are placed); this loop covers 2D and paused GL */
   useEffect(() => {
     rig.railStep = railStep
-    let raf = 0
-    const loop = (n: number) => { if (n - rig.glStepAt > 40) railStep(n); raf = requestAnimationFrame(loop) }
+    let raf = 0, stages: HTMLElement[] = []
+    const loop = (n: number) => {
+      if (n - rig.glStepAt > 40) {
+        railStep(n)
+        /* no 3D frame is placing the pictures (2D room / paused GL): put them on the 360 ring from the rail position */
+        if (viewRef.current === 'wardrobe') {
+          if (!stages.length || !stages[0].isConnected) stages = Array.from(document.querySelectorAll<HTMLElement>('.track .stage'))
+          applyOrbit(stages, rig.scrollP, LAST)
+        }
+      }
+      raf = requestAnimationFrame(loop)
+    }
     raf = requestAnimationFrame(loop)
     return () => { cancelAnimationFrame(raf); rig.railStep = null }
   }, [railStep])
