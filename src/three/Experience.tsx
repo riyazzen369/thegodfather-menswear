@@ -5,7 +5,7 @@ import { EffectComposer, Bloom, Noise, Vignette, DepthOfField } from '@react-thr
 import { BlendFunction, type DepthOfFieldEffect } from 'postprocessing'
 import * as THREE from 'three'
 import { ITEMS, STORE, TAILOR, vaultCount, onCatalogue } from '../data'
-import { rig, easeInOut, easeOut, clamp01, smooth, WALK_MS, walkTime, orbitAt, applyOrbit } from '../rig'
+import { rig, easeInOut, easeOut, clamp01, smooth, WALK_MS, walkTime, orbitAt, orbitFade, applyOrbit } from '../rig'
 
 /* ---------------- world constants ---------------- */
 const FOV = 40
@@ -956,22 +956,23 @@ function Piece({ i }: { i: number }) {
     const o = orbitAt(i - pe)
     g.current!.position.set((onRail ? pe : rig.scrollP) * w.spacing + o.x * w.spacing, 0, -o.z * w.spacing)
     g.current!.rotation.y = -o.th
-    const pr = w.pieceW * 0.4, ph = w.pieceH * 0.05
+    const fd = orbitFade(Math.abs(i - pe)); g.current!.visible = fd > 0.01
+    const pr = w.pieceW * 0.4 * (0.4 + 0.6 * fd), ph = w.pieceH * 0.05
     plinth.current!.position.set(0, w.floorY + ph / 2, PZ + 0.05); plinth.current!.scale.set(pr, ph, pr * 0.55)
     ring.current!.position.set(0, w.floorY + ph + 0.004, PZ + 0.05); ring.current!.scale.set(pr, pr * 0.55, 1)
     const nW = w.pieceW * 1.16, nH = w.pieceH * 1.08
     niche.current!.position.set(0, w.py + w.pieceH * 0.02, PZ - 0.9); niche.current!.scale.set(nW, nH, 1)
-    nm.uniforms.uAsp.value = nW / nH; nm.uniforms.uI.value = 0.35 + 0.9 * s.s
+    nm.uniforms.uAsp.value = nW / nH; nm.uniforms.uI.value = (0.35 + 0.9 * s.s) * fd
     ringMat.color.setRGB(0.5 + 3.0 * s.s, 0.34 + 2.0 * s.s, 0.12 + 0.6 * s.s)
     const coneH = w.pieceH * 1.9
     cone.current!.position.set(0, w.floorY + coneH / 2, PZ - 0.35)
     cone.current!.scale.set(w.pieceW * 0.62, coneH, w.pieceW * 0.4)
     cm.uniforms.uHgt.value = 1
-    cm.uniforms.uI.value = 0.18 + 0.82 * s.s
+    cm.uniforms.uI.value = (0.18 + 0.82 * s.s) * fd
     pool.current!.position.set(0, w.floorY + 0.005, PZ - 0.2); pool.current!.scale.set(w.pieceW * 1.6, w.pieceW * 0.7, 1)
-    pm.uniforms.uI.value = 0.04 + 0.16 * s.s
+    pm.uniforms.uI.value = (0.04 + 0.16 * s.s) * fd
     wallPool.current!.position.set(0, w.py + w.pieceH * 0.15, PZ - 1.58); wallPool.current!.scale.set(w.pieceW * 2.4, w.pieceH * 1.7, 1)
-    wm.uniforms.uI.value = 0.03 + 0.16 * s.s
+    wm.uniforms.uI.value = (0.03 + 0.16 * s.s) * fd
   })
   return (
     <group ref={g}>
@@ -1054,7 +1055,7 @@ function Health({ onFail }: { onFail: (why: string) => void }) {
 /* keep the DOM pictures on their 3D anchors: the rail's pitch and the camera's glide differ from the scroll track's */
 function DomSync() {
   const els = useRef<HTMLElement[]>([])
-  useEffect(() => () => { document.querySelectorAll<HTMLElement>('.track .stage').forEach(el => { el.style.transform = ''; el.style.zIndex = ''; el.style.removeProperty('--dim') }) }, [])
+  useEffect(() => () => { document.querySelectorAll<HTMLElement>('.track .stage').forEach(el => { el.style.transform = ''; el.style.zIndex = ''; el.style.opacity = ''; el.style.visibility = ''; el.style.removeProperty('--dim') }) }, [])
   useFrame(({ camera }) => {
     if (rig.view !== 'wardrobe') return
     if (!els.current.length || !els.current[0].isConnected) els.current = Array.from(document.querySelectorAll<HTMLElement>('.track .stage'))

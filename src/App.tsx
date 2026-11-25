@@ -99,7 +99,10 @@ export default function App(_: { rev?: number }) {
   const measure = useCallback(() => {
     const s = slides()[0]; if (!s) return
     const st = s.querySelector('.stage') as HTMLElement
+    /* measure the piece as laid out, not as placed on the 360 ring (the ring transform would skew sx/sw/sh on every render) */
+    const tf = st.style.transform; st.style.transform = 'none'
     const sr = s.getBoundingClientRect(), r = st.getBoundingClientRect()
+    st.style.transform = tf
     rig.layout = { W: innerWidth, H: innerHeight, sx: r.left - sr.left + r.width / 2, sy: r.top + r.height / 2, sw: r.width, sh: r.height, slideW: s.offsetWidth, v: rig.layout.v + 1 }
   }, [])
   useLayoutEffect(() => { measure() })
@@ -162,8 +165,8 @@ export default function App(_: { rev?: number }) {
     if (dt <= 0) return
     dt = Math.min(dt, 0.25) /* keep real-time pace on slow frames; sub-steps keep it stable */
     if (!c.drag && (c.p !== c.target || c.v !== 0)) {
-      /* critically damped spring (~0.5 s to settle), sub-stepped for stability */
-      const w = 11
+      /* critically damped spring (~0.9 s to settle), sub-stepped for stability */
+      const w = 6.5
       for (let h = dt; h > 0; h -= 1 / 120) {
         const k = Math.min(h, 1 / 120), a = -2 * w * c.v - w * w * (c.p - c.target)
         c.v += a * k; c.p += c.v * k
@@ -182,7 +185,7 @@ export default function App(_: { rev?: number }) {
       if (n - rig.glStepAt > 40) {
         railStep(n)
         /* no 3D frame is placing the pictures (2D room / paused GL): put them on the 360 ring from the rail position */
-        if (viewRef.current === 'wardrobe') {
+        if (viewRef.current === 'wardrobe' && n - rig.glStepAt > 400) {   // one writer only: a slow 3D frame (>40 ms) must not fight this loop over the pictures
           if (!stages.length || !stages[0].isConnected) stages = Array.from(document.querySelectorAll<HTMLElement>('.track .stage'))
           applyOrbit(stages, rig.scrollP, LAST)
         }
@@ -231,7 +234,7 @@ export default function App(_: { rev?: number }) {
       if (!c.drag) { c.drag = true; moved = true; t.classList.add('dragging'); try { t.setPointerCapture(e.pointerId) } catch { /* noop */ } }
       const n = performance.now(), dtm = Math.max(1, n - down.lastT)
       down.v = down.v * 0.4 + 0.6 * ((e.clientX - down.lastX) / dtm); down.lastX = e.clientX; down.lastT = n
-      let want = down.p0 - dx / c.W, over = 0
+      let want = down.p0 - 0.8 * dx / c.W, over = 0
       if (want < 0) { over = want * c.W; want = 0 } else if (want > c.maxP) { over = (want - c.maxP) * c.W; want = c.maxP }
       c.p = want; c.v = 0; rig.over = over
       t.style.transform = over ? `translate3d(${(-over * 0.3).toFixed(1)}px,0,0)` : ''
@@ -246,10 +249,10 @@ export default function App(_: { rev?: number }) {
       const vpx = performance.now() - d.lastT > 90 ? 0 : d.v            // px per ms
       const dx = e.clientX - d.x
       let to = d.base
-      if (dx < -50 || vpx < -0.4) to = d.base + 1; else if (dx > 50 || vpx > 0.4) to = d.base - 1
+      if (dx < -50 || vpx < -0.45) to = d.base + 1; else if (dx > 50 || vpx > 0.45) to = d.base - 1
       to = Math.max(0, Math.min(LAST, to))
       /* hand the finger's speed to the spring, so the glide continues the gesture instead of restarting */
-      c.v = Math.max(-8, Math.min(8, -vpx * 1000 / c.W))
+      c.v = Math.max(-1.6, Math.min(1.6, -vpx * 1000 / c.W * 0.5))
       c.target = Math.min(to, c.maxP)
       if (reduced) { c.p = c.target; c.v = 0 }
       if (to !== indexRef.current) { for (const k of [to - 1, to + 1]) if (k >= 0 && k < LAST) preloadPic(ITEMS[k].images[0].src, garmentW()); setActive(to, Math.sign(to - d.base) || 1) }
@@ -277,7 +280,7 @@ export default function App(_: { rev?: number }) {
       clearTimeout(quietT); quietT = window.setTimeout(tryUnlock, 160)
       if (lock) return
       acc += e.deltaMode === 1 ? d * 30 : d
-      if (Math.abs(acc) >= 30) { const dir = acc > 0 ? 1 : -1; acc = 0; lock = true; lockT = performance.now() + 650; goTo(indexRef.current + dir) }
+      if (Math.abs(acc) >= 30) { const dir = acc > 0 ? 1 : -1; acc = 0; lock = true; lockT = performance.now() + 800; goTo(indexRef.current + dir) }
     }
     window.addEventListener('wheel', wheel, { passive: false })
     const resize = () => { measure(); railMeasure(); if (indexRef.current >= 0) railJump(indexRef.current) }
