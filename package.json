@@ -16,6 +16,7 @@
     "test:rls": "node tests/rls-local.mjs",
     "test:live": "cd tests && node live-catalogue.js",
     "test:admin": "cd tests && node admin-tabs.js",
+    "test:attire": "cd tests && node attire-editor.js",
     "seed": "node scripts/seed-supabase.mjs",
     "admin:create": "node scripts/create-admin.mjs"
   },

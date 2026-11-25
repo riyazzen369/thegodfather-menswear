@@ -19,7 +19,8 @@ export type Row = {
   nudge?: { front?: { s: number; x: number; y: number }; back?: { s: number; x: number; y: number }; frontBox?: { w: number; h: number } }; src_paths?: { front?: string; back?: string }
   sort: number; published: boolean; updated_at: string
 }
-export const publicUrl = (path: string | null, v?: string) => path ? `${URL_}/storage/v1/object/public/products/${path}${v ? `?v=${encodeURIComponent(v)}` : ''}` : undefined
+/* a path starting with site: is a picture shipped with the website itself (public/img/...), not one in storage */
+export const publicUrl = (path: string | null, v?: string) => path ? (path.startsWith('site:') ? `${import.meta.env.BASE_URL}${path.slice(5)}` : `${URL_}/storage/v1/object/public/products/${path}${v ? `?v=${encodeURIComponent(v)}` : ''}`) : undefined
 const DEF = { fit: 'Tailored to you.', madeToMeasure: 'Made to measure in the house.', delivery: 'Ask us for timings.' }
 export function toItem(r: Row): Item {
   const v = r.updated_at, front = publicUrl(r.front_path, v)

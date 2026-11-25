@@ -150,9 +150,12 @@ export async function refineMatte(photo: ImageBitmap | HTMLCanvasElement, coarse
   return createImageBitmap(cg.canvas)
 }
 
-export async function cutOut(file: Blob, onStep?: (s: string) => void): Promise<Cut> {
+export type RawCut = { bmp: ImageBitmap; method: Cut['method']; photo: HTMLCanvasElement | null }
+/* background removal + matte refinement, WITHOUT the final tidy: the Attire editor needs the raw result to let you fix it.
+   photo = the original pixels (kept so a removed part can be brought back); null when the upload was already a transparent cut-out. */
+export async function cutOutRaw(file: Blob, onStep?: (s: string) => void): Promise<RawCut> {
   const src = await createImageBitmap(file, { imageOrientation: 'from-image' })
-  if (hasAlpha(src)) return { bmp: await cleanCut(src, false), method: 'alpha' }
+  if (hasAlpha(src)) return { bmp: src, method: 'alpha', photo: null }
   /* phone photos are huge; the model works at ~1024px anyway */
   const k = Math.min(1, 2000 / Math.max(src.width, src.height))
   const small = canvas(Math.round(src.width * k), Math.round(src.height * k)); small.getContext('2d')!.drawImage(src, 0, 0, small.width, small.height)
@@ -164,14 +167,20 @@ export async function cutOut(file: Blob, onStep?: (s: string) => void): Promise<
     const run = (model: 'isnet_fp16' | 'isnet_quint8') => removeBackground(jpeg, { model, output: { format: 'image/png' }, progress: (key, cur, tot) => { if (/fetch/.test(key) && tot) onStep?.(`Downloading the background model… ${Math.round(cur / tot * 100)}%`) } })
     /* the larger, more accurate model first; the small one if that cannot load */
     const out = await run('isnet_fp16').catch(() => run('isnet_quint8'))
-    const bmp = await cleanCut(await refineMatte(small, await createImageBitmap(out)), false)
+    onStep?.('Sharpening the edges…')
+    const bmp = await refineMatte(small, await createImageBitmap(out))
     src.close()
-    return { bmp, method: 'ai' }
+    return { bmp, method: 'ai', photo: small }
   } catch (e) {
     console.warn('background model unavailable, using backdrop key', e)
-    const bmp = await cleanCut(await refineMatte(src, await keyOut(src)), false); src.close()
-    return { bmp, method: 'key' }
+    const bmp = await refineMatte(src, await keyOut(src))
+    const ph = canvas(Math.round(src.width * k), Math.round(src.height * k)); ph.getContext('2d')!.drawImage(src, 0, 0, ph.width, ph.height)
+    return { bmp, method: 'key', photo: ph }
   }
+}
+export async function cutOut(file: Blob, onStep?: (s: string) => void): Promise<Cut> {
+  const r = await cutOutRaw(file, onStep)
+  return { bmp: await cleanCut(r.bmp, false), method: r.method }
 }
 
 /* alpha bounding box, ignoring specks */
@@ -214,7 +223,7 @@ function rectOf(c: Cut, n: Nudge, match?: { w: number; h: number }, box?: { x: n
   const w = b.w * k, h = b.h * k
   return { b, w, h, x: (CW - w) / 2 + n.x * CW, y: CH * TOP + n.y * CH }
 }
-export async function place(c: Cut, n: Nudge, opts: { photo: boolean; match?: { w: number; h: number } }): Promise<Placed> {
+export async function place(c: Cut, n: Nudge, opts: { photo: boolean; match?: { w: number; h: number }; maxBytes?: number }): Promise<Placed> {
   const { b, w, h, x, y } = rectOf(c, n, opts.match)
   const cut = canvas(CW, CH), g = cut.getContext('2d', { willReadFrequently: true })!
   g.imageSmoothingQuality = 'high'; g.drawImage(c.bmp, b.x, b.y, b.w, b.h, x, y, w, h)
@@ -227,7 +236,10 @@ export async function place(c: Cut, n: Nudge, opts: { photo: boolean; match?: { 
     /* soft contact shadow + the garment */
     pg.save(); pg.shadowColor = 'rgba(0,0,0,.55)'; pg.shadowBlur = 40; pg.shadowOffsetY = 18; pg.drawImage(cut, 0, 0, PW, PH); pg.restore()
     pg.drawImage(cut, 0, 0, PW, PH)
-    out.photo = await toBlob(ph, 0.86); out.photoUrl = URL.createObjectURL(out.photo)
+    /* compress as hard as it takes to stay under maxBytes, but never below q 0.72 (visible loss starts under that) */
+    let q = opts.maxBytes ? 0.88 : 0.86; out.photo = await toBlob(ph, q)
+    while (opts.maxBytes && out.photo.size > opts.maxBytes && q > 0.72) { q = Math.max(0.72, q - 0.04); out.photo = await toBlob(ph, q) }
+    out.photoUrl = URL.createObjectURL(out.photo)
   } else { pg.fillStyle = '#140a0b'; pg.fillRect(0, 0, PW, PH); pg.drawImage(cut, 0, 0, PW, PH) }
   const s = canvas(12, 16); s.getContext('2d')!.drawImage(ph, 0, 0, 12, 16); out.blur = s.toDataURL('image/webp', 0.5)
   return out

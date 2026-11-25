@@ -3,21 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
 import { CATEGORIES } from '../data'
+import { MAX_PRICE, MAX_SORT, CAP, KIND_NAME, blank, slugify, inr, type Draft, type Kind } from './shared'
+import AttireEditor from './AttireEditor'
 import { liveEnabled, publicUrl, supa, type Row } from '../supa'
 import EliteSlots from './Elite'
 import Analytics from './Analytics'
 import { autoFit, cutOut, cutFromUrl, place, rawBlob, NUDGE0, type Cut, type Nudge, type Placed } from './normalize'
 
-type Draft = Omit<Row, 'id' | 'updated_at'> & { id?: string; updated_at?: string }
-type Kind = 'premium' | 'attire'
-const CAP: Record<Kind, number> = { premium: 12, attire: 45 }
-const KIND_NAME: Record<Kind, string> = { premium: 'Elite Wardrobe', attire: 'Attire Collection' }
-const blank = (sort: number, collection: Kind = 'premium'): Draft => ({
-  slug: '', name: '', collection, category: 'formal', price_from: null, sizes: {}, tagline: '', description: '', fabric: '',
-  details: { fit: '', madeToMeasure: '', delivery: '' }, colours: [], front_path: null, extra_paths: [], front_cut_path: null,
-  back_path: null, blur: null, nudge: {}, src_paths: {}, sort, published: false
-})
-const slugify = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
 /* a 512 px wide WebP copy of the vault photo, so the grid and vault cards on phones don't download the 864 px one */
 async function smallVariant(photo: Blob): Promise<Blob | null> {
   try {
@@ -27,8 +19,6 @@ async function smallVariant(photo: Blob): Promise<Blob | null> {
     return await new Promise<Blob | null>(res => c.toBlob(b => res(b), 'image/webp', 0.82))
   } catch { return null }
 }
-const MAX_PRICE = 99_999_999, MAX_SORT = 9999
-const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 
 export default function Admin() {
   const [sb, setSb] = useState<SupabaseClient | null>(null)
@@ -167,7 +157,7 @@ function Collection({ sb, kind, rev, bump }: { sb: SupabaseClient; kind: Kind; r
     const bad = res.find(r => r.error)
     if (bad?.error) { setErr(bad.error.message); setNote(''); load() } else { setErr(''); setNote('Order saved. The vault now follows it.') }
   }
-  if (edit) return <Editor sb={sb} draft={edit} onDone={() => { setEdit(null); bump() }} />
+  if (edit) return edit.collection === 'attire' ? <AttireEditor sb={sb} draft={edit} onDone={() => { setEdit(null); bump() }} /> : <Editor sb={sb} draft={edit} onDone={() => { setEdit(null); bump() }} />
   const nextSort = mine.length ? Math.max(...mine.map(r => r.sort)) + 10 : 10
   const add = () => setEdit(blank(nextSort, kind))
   return (
@@ -327,7 +317,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
       delete (fields as any).created_at
       const { error } = id ? await sb.from('products').update(fields).eq('id', id) : await sb.from('products').insert(fields)
       if (error) throw error
-      if (old.length) await sb.storage.from('products').remove(old)
+      { const gone = old.filter(x => !x.startsWith('site:')); if (gone.length) await sb.storage.from('products').remove(gone) }
       onDone()
     } catch (e) {
       if (uploaded.length) await sb.storage.from('products').remove(uploaded).catch(() => {})
@@ -342,7 +332,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
     const { error } = await sb.from('products').delete().eq('id', draft.id)
     if (error) { setErr(error.message); setBusy(''); return }
     const files = [draft.front_path, draft.front_cut_path, draft.back_path, draft.src_paths?.front, draft.src_paths?.back, ...draft.extra_paths.map(e => e.path)].filter(Boolean) as string[]
-    if (files.length) await sb.storage.from('products').remove(files)
+    { const gone = files.filter(x => !x.startsWith('site:')); if (gone.length) await sb.storage.from('products').remove(gone) }
     onDone()
   }
   const Nudges = ({ which }: { which: 'front' | 'back' }) => {
