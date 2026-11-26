@@ -299,7 +299,7 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .sf-nav nav button{min-height:44px;padding:0 12px;background:none;border:0;color:var(--bone);font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;opacity:.85}
 .sf-nav nav button:hover,.sf-nav nav button:focus-visible{color:var(--neon);opacity:1}
 .sf-hero{position:absolute;z-index:4;left:calc(var(--sal) + 20px);right:44%;bottom:calc(var(--sab) + 318px);animation:riseIn 1s var(--ease) calc(var(--t-panel) - 1.2s) both}
-.sf-kicker{display:flex;align-items:center;gap:10px;margin:0 0 8px;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.sf-kicker{text-shadow:0 0 14px #000,0 0 6px #000,0 1px 2px #000;display:flex;align-items:center;gap:10px;margin:0 0 8px;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:#e9dfcf}
 .sf-kicker i{display:block;width:26px;height:1px;background:var(--neon)}
 .sf-title{margin:0;font-family:var(--slab);font-weight:400;font-size:clamp(1.65rem,7.4vw,4.6rem);line-height:1.02;letter-spacing:-.005em;text-shadow:0 2px 20px rgba(0,0,0,.6)}
 .sf-title em{font-style:normal;color:var(--neon);text-shadow:0 0 18px rgba(255,42,58,.45)}
@@ -450,6 +450,9 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .name{font-size:clamp(1.9rem,8.4vw,3.9rem);line-height:1.02}
 .kicker{margin:0 0 6px;font-variant-numeric:tabular-nums;font-size:.74rem;letter-spacing:.18em;color:var(--neon)}
 .kicker span{color:var(--muted)}
+.kicker{transition:opacity .3s var(--ease)}
+.slide:not(.is-active) .kicker{opacity:0}
+@media (max-width:959px){ .vault .kicker{display:none} }   /* phone: the bottom counter already says it, and the kicker sat on the plinth */
 .vault-label{display:none}
 @media (min-width:960px){
   .vault .back-shop{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 12px;background:none;border:0;color:var(--bone);cursor:pointer;font-size:.8rem;letter-spacing:.08em;margin-right:auto}

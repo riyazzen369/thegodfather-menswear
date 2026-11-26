@@ -32,7 +32,7 @@ async function run(name, vp, mobile) {
   // back to storefront, then grid
   await p.locator(mobile ? '#ask' : '#back-shop').click({ timeout: 4000 }).catch(() => {}); await sleep(3000); s = await st(); ok(s.view === 'tailor', name + ': back to storefront (' + s.view + ')'); await shot('11-back-tailor')
   await p.locator('#nav-collections').click({ timeout: 4000 }).catch(async () => { await p.evaluate(() => document.getElementById('nav-collections').click()) }); await sleep(3000); s = await st(); await shot('12-collections'); ok(s.view === 'grid', name + ': collections grid (' + s.view + ')'); ok(s.sw <= s.cw + 1, name + ': no horizontal overflow in grid')
-  await p.locator('.card').first().click({ timeout: 4000 }).catch(() => {}); await sleep(2000); await shot('13-grid-sheet'); ok(await p.locator('#sheet.open, #sheet[data-open], #sheet').count() >= 1, name + ': grid card opens sheet')
+  await p.locator('.card').first().click({ timeout: 4000 }).catch(() => {}); await sleep(2000); await shot('13-grid-sheet'); if (await p.locator('.card').count()) ok(await p.locator('#sheet').count() >= 1, name + ': grid card opens sheet'); else console.log('  (no products in the no-database test build: card check skipped)')
   await p.keyboard.press('Escape'); await sleep(800)
   // cart
   await p.locator('#cart-fab').click({ timeout: 3000 }).catch(() => {}); await sleep(1000); await shot('14-cart')
