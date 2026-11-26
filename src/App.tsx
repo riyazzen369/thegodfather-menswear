@@ -131,6 +131,7 @@ export default function App(_: { rev?: number }) {
     const prev = indexRef.current
     indexRef.current = i; rig.index = i; rig.dir = dir
     rig.activeAt[i] = performance.now()
+    if (prev >= 0 && viewRef.current === 'wardrobe') { try { navigator.vibrate?.(6) } catch { /* no haptics */ } }
     rig.loadUpTo = Math.max(rig.loadUpTo, i + 1)
     setIndexState(i)
     const ss = slides()
@@ -263,6 +264,12 @@ export default function App(_: { rev?: number }) {
       if (s && +s.dataset.i! !== indexRef.current) { e.preventDefault(); goTo(+s.dataset.i!) }
       /* a tap on the piece in focus opens it in 3D */
       else if (s && (e.target as HTMLElement).closest('.garment')) { e.preventDefault(); openInspect(+s.dataset.i!, s.querySelector('.details') as HTMLElement | null) }
+      /* a tap on the empty side of the stage steps to the previous / next piece */
+      else if (s && !(e.target as HTMLElement).closest('a,button,.copy')) {
+        const fx = e.clientX / innerWidth
+        if (fx < 0.2 && indexRef.current > 0) { e.preventDefault(); goTo(indexRef.current - 1) }
+        else if (fx > 0.8 && indexRef.current < LAST) { e.preventDefault(); goTo(indexRef.current + 1) }
+      }
     }
     t.addEventListener('pointerdown', pdown)
     window.addEventListener('pointermove', pmove)
@@ -346,7 +353,13 @@ export default function App(_: { rev?: number }) {
     walkTimers.current.forEach(clearTimeout); walkTimers.current = []
     openVault(0, false)
     setArrive(true); clearTimeout(arriveT.current); arriveT.current = window.setTimeout(() => setArrive(false), 1500)
-  }, [openVault])
+    /* once per visit: the rail leans towards the next piece and settles back, so nobody has to guess that it swipes */
+    let seenPeek = false; try { seenPeek = sessionStorage.getItem('gf-peek') === '1' } catch { /* private mode */ }
+    if (!seenPeek && !reduced) walkTimers.current.push(window.setTimeout(() => {
+      const c = car.current
+      if (viewRef.current === 'wardrobe' && indexRef.current === 0 && !c.drag && c.p === c.target) { c.v = 3.4; try { sessionStorage.setItem('gf-peek', '1') } catch { /* noop */ } }
+    }, 2300))
+  }, [openVault, reduced])
   const startWalk = useCallback(() => {
     walkTimers.current.forEach(clearTimeout); walkTimers.current = []
     const t = track.current!

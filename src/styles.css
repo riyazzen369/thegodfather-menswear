@@ -58,9 +58,9 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .final-logo{width:min(70vw,420px);opacity:.3;transition:opacity 1s var(--ease)}
 .final.is-active .final-logo{opacity:1}
 .copy{position:relative;flex:0 0 auto;padding-top:14px;max-width:560px}
-.line{opacity:0;transform:translateY(16px);transition:opacity .3s var(--ease), transform .3s var(--ease)}
+.line{opacity:0;transform:translateY(14px);transition:opacity .18s var(--ease), transform .18s var(--ease)}
 .slide.is-active .line{opacity:1;transform:none;
-  transition:opacity .6s var(--ease) calc(.62s + var(--i) * .12s), transform .6s var(--ease) calc(.62s + var(--i) * .12s)}
+  transition:opacity .5s var(--ease) calc(.28s + var(--i) * .07s), transform .5s var(--ease) calc(.28s + var(--i) * .07s)}
 .name{font-family:var(--serif);font-weight:500;font-size:clamp(2.1rem,9.4vw,4.6rem);line-height:1.02;margin:0 0 8px;letter-spacing:-.01em;text-shadow:0 2px 24px rgba(0,0,0,.6)}
 .fabric{margin:0 0 6px;color:var(--muted);font-size:.95rem;max-width:36ch}
 .price{margin:0 0 14px;color:var(--warm);font-size:.95rem}

@@ -5,6 +5,8 @@ import { EffectComposer, Bloom, Noise, Vignette, DepthOfField } from '@react-thr
 import { BlendFunction, type DepthOfFieldEffect } from 'postprocessing'
 import * as THREE from 'three'
 import { ITEMS, STORE, TAILOR, vaultCount, onCatalogue } from '../data'
+import { photoUrl } from '../Pic'
+import { clearOrbitCopy } from '../rig'
 import { rig, easeInOut, easeOut, clamp01, smooth, WALK_MS, walkTime, orbitAt, orbitFade, applyOrbit } from '../rig'
 
 /* ---------------- world constants ---------------- */
@@ -926,6 +928,21 @@ function Room({ low, res }: { low: boolean; res: number }) {
   )
 }
 
+/* soft edge fade of a wardrobe photo (the same feather the DOM picture has), as an alpha map */
+let edgeTex: THREE.CanvasTexture | null = null
+function edgeMask() {
+  if (edgeTex) return edgeTex
+  const c = document.createElement('canvas'); c.width = c.height = 64
+  const x = c.getContext('2d')!, d = x.createImageData(64, 64), ss = (a: number, b: number, t: number) => { const u = Math.min(1, Math.max(0, (t - a) / (b - a))); return u * u * (3 - 2 * u) }
+  for (let j = 0; j < 64; j++) for (let k = 0; k < 64; k++) {
+    const u = (k + 0.5) / 64, v = (j + 0.5) / 64
+    const m = ss(0, 0.2, u) * ss(0, 0.2, 1 - u) * ss(0, 0.11, v) * ss(0, 0.11, 1 - v), o = (j * 64 + k) * 4
+    d.data[o] = d.data[o + 1] = d.data[o + 2] = Math.round(m * 255); d.data[o + 3] = 255
+  }
+  x.putImageData(d, 0, 0); edgeTex = new THREE.CanvasTexture(c); return edgeTex
+}
+const photoLoader = (() => { const l = new THREE.TextureLoader(); l.setCrossOrigin('anonymous'); return l })()
+
 /* ---------------- one piece in the wardrobe ---------------- */
 function Piece({ i }: { i: number }) {
   const g = useRef<THREE.Group>(null), cone = useRef<THREE.Mesh>(null)
@@ -937,7 +954,12 @@ function Piece({ i }: { i: number }) {
   const plMat = useMemo(() => new THREE.MeshBasicMaterial({ color: new THREE.Color(0.07, 0.055, 0.045) }), [])
   const ringMat = useMemo(() => new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.72, 0.3), toneMapped: false }), [])
   const st = useRef({ a: 0, s: 0 })
-  const cam = useThree(t => t.camera)
+  const cam = useThree(t => t.camera), gl = useThree(t => t.gl)
+  /* the product photo itself, drawn in the 3D scene on the same ring as its niche */
+  const photo = useRef<THREE.Mesh>(null)
+  const pmat = useMemo(() => new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, opacity: 0, alphaMap: edgeMask() }), [])
+  const phs = useRef({ src: '', loading: false, ok: false, k: 0, wake: 0 })
+  useEffect(() => () => { pmat.map?.dispose(); pmat.dispose(); rig.photoK[i] = 0 }, [pmat, i])
   useFrame((_, dt) => {
     const s = st.current
     const w = world(), active = rig.index === i && rig.view !== 'gate'
@@ -954,8 +976,11 @@ function Piece({ i }: { i: number }) {
     const onRail = rig.view === 'wardrobe' && walkTime() < 0 && !!cam
     const pe = onRail ? (cam.position.x - w.camOffset) / w.spacing : rig.scrollP
     const o = orbitAt(i - pe)
-    g.current!.position.set((onRail ? pe : rig.scrollP) * w.spacing + o.x * w.spacing, 0, -o.z * w.spacing)
-    g.current!.rotation.y = -o.th
+    /* the ring turns each piece about ITS OWN centre (the piece plane, z = PZ), not about the world origin 10 m behind it:
+       that mistake used to fling every turned niche sideways, which is why the old orbit never looked like an orbit */
+    const phi = -o.th, cxw = (onRail ? pe : rig.scrollP) * w.spacing + o.x * w.spacing, czw = -o.z * w.spacing
+    g.current!.position.set(cxw - PZ * Math.sin(phi), 0, czw + PZ - PZ * Math.cos(phi))
+    g.current!.rotation.y = phi
     const fd = orbitFade(Math.abs(i - pe)); g.current!.visible = fd > 0.01
     const pr = w.pieceW * 0.4 * (0.4 + 0.6 * fd), ph = w.pieceH * 0.05
     plinth.current!.position.set(0, w.floorY + ph / 2, PZ + 0.05); plinth.current!.scale.set(pr, ph, pr * 0.55)
@@ -973,6 +998,31 @@ function Piece({ i }: { i: number }) {
     pm.uniforms.uI.value = (0.04 + 0.16 * s.s) * fd
     wallPool.current!.position.set(0, w.py + w.pieceH * 0.15, PZ - 1.58); wallPool.current!.scale.set(w.pieceW * 2.4, w.pieceH * 1.7, 1)
     wm.uniforms.uI.value = (0.03 + 0.16 * s.s) * fd
+    /* ---- the photo ---- */
+    const P = phs.current, src = ITEMS[i]?.images[0]?.src
+    const inVault = rig.view === 'wardrobe' || rig.view === 'walk'
+    if (inVault && !P.wake) P.wake = performance.now() + Math.abs(i - Math.max(0, Math.round(rig.scrollP))) * 260
+    if (src && inVault && src !== P.src && !P.loading && performance.now() >= P.wake) {
+      P.loading = true; P.src = src; P.ok = false
+      const L = rig.layout
+      photoLoader.load(photoUrl(src, Math.min(L.sh, L.sw * 4 / 3) * 0.75 || 400), tex => {
+        if (P.src !== src) { tex.dispose(); P.loading = false; return }
+        tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4
+        pmat.map?.dispose(); pmat.map = tex; pmat.needsUpdate = true
+        try { gl.initTexture(tex) } catch { /* uploaded on first draw instead */ }
+        P.ok = true; P.loading = false
+      }, undefined, () => { P.loading = false; P.src = ''; P.wake = performance.now() + 5000 })
+    }
+    const want = rig.view === 'wardrobe' && walkTime() < 0 && P.ok ? 1 : 0
+    P.k = want > P.k ? Math.min(1, P.k + dt / 0.35) : want < P.k ? Math.max(0, P.k - dt / 0.2) : P.k
+    rig.photoK[i] = P.k
+    const am = Math.abs(i - pe), op = fd * P.k
+    pmat.opacity = op
+    const dim = 1 - Math.min(1, am / 1.15) * 0.55; pmat.color.setRGB(dim, dim, dim)
+    const m = photo.current!
+    m.visible = op > 0.004
+    m.position.set(0, w.py, PZ + 0.02); m.scale.set(w.pieceW, w.pieceH, 1)
+    m.rotation.y = s.a * (Math.sin(tnow / 1000 * 0.7) * 0.07 + rig.pointer.x * 0.05)
   })
   return (
     <group ref={g}>
@@ -980,6 +1030,7 @@ function Piece({ i }: { i: number }) {
       <mesh ref={niche} material={nm}><planeGeometry /></mesh>
       <mesh ref={cone} material={cm}><cylinderGeometry args={[0.06, 1, 1, 40, 1, true]} /></mesh>
       <mesh ref={pool} rotation={[-Math.PI / 2, 0, 0]} material={pm}><planeGeometry /></mesh>
+      <mesh ref={photo} material={pmat} renderOrder={2} visible={false}><planeGeometry /></mesh>
       <mesh ref={plinth} material={plMat} renderOrder={3}><cylinderGeometry args={[1, 1.06, 1, 48]} /></mesh>
       <mesh ref={ring} material={ringMat} rotation={[-Math.PI / 2, 0, 0]} renderOrder={4}><ringGeometry args={[0.94, 1, 64]} /></mesh>
     </group>
@@ -1055,12 +1106,12 @@ function Health({ onFail }: { onFail: (why: string) => void }) {
 /* keep the DOM pictures on their 3D anchors: the rail's pitch and the camera's glide differ from the scroll track's */
 function DomSync() {
   const els = useRef<HTMLElement[]>([])
-  useEffect(() => () => { document.querySelectorAll<HTMLElement>('.track .stage').forEach(el => { el.style.transform = ''; el.style.zIndex = ''; el.style.opacity = ''; el.style.visibility = ''; el.style.removeProperty('--dim') }) }, [])
+  useEffect(() => () => { rig.photoK.length = 0; clearOrbitCopy(); document.querySelectorAll<HTMLElement>('.track .stage').forEach(el => { el.style.transform = ''; el.style.zIndex = ''; el.style.opacity = ''; el.style.visibility = ''; el.style.removeProperty('--dim') }) }, [])
   useFrame(({ camera }) => {
     if (rig.view !== 'wardrobe') return
     if (!els.current.length || !els.current[0].isConnected) els.current = Array.from(document.querySelectorAll<HTMLElement>('.track .stage'))
     const w = world()
-    applyOrbit(els.current, (camera.position.x - w.camOffset) / w.spacing, LAST)
+    applyOrbit(els.current, (camera.position.x - w.camOffset) / w.spacing, LAST, true)
   })
   return null
 }

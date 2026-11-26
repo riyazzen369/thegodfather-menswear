@@ -46,6 +46,15 @@ export function preloadPic(src: string, cssW: number) {
   i.decode?.().then(() => seen.add(url)).catch(() => {})
 }
 
+/* the one file a 3D wardrobe texture should use (WebP, sized like the <picture> would pick) */
+export function photoUrl(src: string, cssW: number) {
+  const sm = REMOTE_SMALL.get(src)
+  if (sm) return cssW * (devicePixelRatio || 1) <= 512 ? sm : src
+  const p = parts(src); if (!p) return src
+  const want = cssW * Math.min(2, devicePixelRatio || 1)
+  return !p.small || want > 560 ? src : `${p.dir}r/${p.name}-512.webp`
+}
+
 export default function Pic({ src, alt, sizes, load = true, eager = false, lazy = false, className = '', imgClass = '' }: {
   src: string; alt: string; sizes: string; load?: boolean; eager?: boolean; lazy?: boolean; className?: string; imgClass?: string
 }) {
