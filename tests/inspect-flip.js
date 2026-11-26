@@ -41,9 +41,8 @@ const URL = process.env.URL || 'http://localhost:8795/'; const OUT = path.join(_
       // a short slow drag springs back to the same face
       await drag(cx, y, card.width * 0.2, 10, 600); await sleep(1300); f = await F()
       ok(`${W} item ${i}: short slow drag springs back`, f.face === 'front' && Math.abs(f.a - 360) < 0.5, `${f.a.toFixed(1)}°`)
-      await p.locator('#inspect-flip').click(); await sleep(1200); f = await F()
-      const lbl = await p.locator('#inspect-flip').innerText()
-      ok(`${W} item ${i}: button flips (label updates)`, f.face === 'back' && /front/i.test(lbl), `${f.face} "${lbl}"`)
+      await p.keyboard.press('ArrowRight'); await sleep(1200); f = await F()
+      ok(`${W} item ${i}: arrow key flips to the back`, f.face === 'back', f.face)
       await p.keyboard.press('ArrowLeft'); await sleep(1200); f = await F() /* in the inspect view the arrow flips the card, the rail does not move */
       ok(`${W} item ${i}: arrow key flips`, f.face === 'front', f.face)
       await p.keyboard.press('Escape'); await sleep(700)

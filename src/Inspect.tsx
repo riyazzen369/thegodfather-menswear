@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Item } from './data'
 import { plainVars } from './plain'
+import { ShopBuy } from './Shop'
 
 /* Inspect a piece: drag to flip. The garment card turns around its vertical axis following the finger 1:1
    (a full card width = 180°), and on release springs to the nearest face, front (0°) or back (180°); a fast fling flips it.
@@ -51,6 +52,7 @@ export default function Inspect({ item, onClose, onDetails, enquireHref, price, 
   useEffect(() => () => cancelAnimationFrame(st.current.raf), [])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest?.('input,textarea,select')) return   /* typing a pincode must not flip the piece */
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); flip(e.key === 'ArrowRight' ? 1 : -1) }
     }
     document.addEventListener('keydown', key)
@@ -122,12 +124,11 @@ export default function Inspect({ item, onClose, onDetails, enquireHref, price, 
         <h2 id="inspect-title">{item.name}</h2>
         <p className="inspect-tag">{item.tagline}</p>
         {price && <p className="inspect-price">{price}</p>}
-        <div className="inspect-actions">
-          <a className="btn primary" href={enquireHref} target="_blank" rel="noopener" id="inspect-wa">Enquire on WhatsApp</a>
-          <button type="button" className="btn ghost" id="inspect-flip" onClick={() => flip(1)} aria-label={face === 'front' ? 'Show the back' : 'Show the front'}>{face === 'front' ? 'Show back' : 'Show front'}</button>
-          <button type="button" className="btn ghost" id="inspect-details" onClick={onDetails}>Full details</button>
-        </div>
-        <p className="inspect-hint">Drag sideways to flip · ← → keys · pinch or scroll to look closer</p>
+        {item.price != null
+          ? <ShopBuy item={item} />
+          : <div className="inspect-actions"><a className="btn primary" href={enquireHref} target="_blank" rel="noopener" id="inspect-wa">Enquire on WhatsApp</a></div>}
+        <button type="button" className="link inspect-more" id="inspect-details" onClick={onDetails}>Full details</button>
+        <p className="inspect-hint">Drag the piece sideways to see the back · pinch to look closer</p>
       </aside>
       <button type="button" className="inspect-close" id="inspect-close" ref={close} onClick={onClose} aria-label="Close and return to the wardrobe">×</button>
     </div>

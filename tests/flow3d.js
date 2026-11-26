@@ -28,7 +28,18 @@ async function run(name, vp, mobile) {
   await p.keyboard.press('Escape'); await sleep(800)
   // tap the piece -> inspect 3D
   const g = p.locator('.slide.is-active .garment').first(); await g.click({ timeout: 3000 }).catch(() => {}); await sleep(3500); await shot('09-inspect'); const insp = await p.locator('#inspect.open').count(); ok(insp === 1, name + ': tap opens 3D inspect')
-  if (insp) { await p.locator('#inspect-flip').click({ timeout: 4000 }).catch(() => {}); await sleep(1500); await shot('10-inspect-back'); await p.locator('#inspect-close').click({ timeout: 4000 }).catch(() => {}); await sleep(1500); s = await st(); ok(s.view === 'wardrobe', name + ': inspect closes back to vault') }
+  if (insp) {
+    ok(await p.locator('#inspect-wa, #inspect-flip').count() === 0, name + ': inspect has no Enquire / Show back buttons')
+    ok(await p.locator('#inspect .size-row .chip').count() >= 4, name + ': sizes are open in the inspect panel')
+    await p.locator('#inspect #add-cart').scrollIntoViewIfNeeded().catch(() => {}); await shot('09b-inspect-buy')
+    await p.locator('#inspect #add-cart').click({ timeout: 4000 }).catch(() => {}); await sleep(500)
+    ok(/choose a size/i.test(await p.locator('#inspect').innerText()), name + ': Add to cart without a size asks for one')
+    await p.locator('#inspect .size-row .chip:not([disabled])').first().click({ timeout: 4000 }).catch(() => {})
+    await p.locator('#inspect #add-cart').click({ timeout: 4000 }).catch(() => {}); await sleep(1200); await shot('09c-inspect-cart')
+    const cartVis = await p.evaluate(() => { const c = document.querySelector('#cart'); if (!c) return false; const r = c.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && c.contains(e) })
+    ok(cartVis, name + ': cart opens above the inspect screen')
+    await p.locator('#cart-close').click({ timeout: 4000 }).catch(() => {}); await sleep(800)
+    await p.keyboard.press('ArrowRight'); await sleep(1500); await shot('10-inspect-back'); await p.locator('#inspect-close').click({ timeout: 4000 }).catch(() => {}); await sleep(1500); s = await st(); ok(s.view === 'wardrobe', name + ': inspect closes back to vault') }
   // back to storefront, then grid
   await p.locator(mobile ? '#ask' : '#back-shop').click({ timeout: 4000 }).catch(() => {}); await sleep(3000); s = await st(); ok(s.view === 'tailor', name + ': back to storefront (' + s.view + ')'); await shot('11-back-tailor')
   await p.locator('#nav-collections').click({ timeout: 4000 }).catch(async () => { await p.evaluate(() => document.getElementById('nav-collections').click()) }); await sleep(3000); s = await st(); await shot('12-collections'); ok(s.view === 'grid', name + ': collections grid (' + s.view + ')'); ok(s.sw <= s.cw + 1, name + ': no horizontal overflow in grid')
