@@ -4,7 +4,7 @@ import { MeshReflectorMaterial, PerformanceMonitor } from '@react-three/drei'
 import { EffectComposer, Bloom, Noise, Vignette, DepthOfField } from '@react-three/postprocessing'
 import { BlendFunction, type DepthOfFieldEffect } from 'postprocessing'
 import * as THREE from 'three'
-import { ITEMS, STORE, TAILOR, vaultCount, onCatalogue } from '../data'
+import { ITEMS, STORE, TAILOR, vaultCount, vaultSrc, onCatalogue } from '../data'
 import { photoUrl } from '../Pic'
 import { clearOrbitCopy } from '../rig'
 import { rig, easeInOut, easeOut, clamp01, smooth, WALK_MS, walkTime, orbitAt, orbitFade, applyOrbit } from '../rig'
@@ -999,14 +999,21 @@ function Piece({ i }: { i: number }) {
     wallPool.current!.position.set(0, w.py + w.pieceH * 0.15, PZ - 1.58); wallPool.current!.scale.set(w.pieceW * 2.4, w.pieceH * 1.7, 1)
     wm.uniforms.uI.value = (0.03 + 0.16 * s.s) * fd
     /* ---- the photo ---- */
-    const P = phs.current, src = ITEMS[i]?.images[0]?.src
+    const P = phs.current, src = ITEMS[i] ? vaultSrc(ITEMS[i]) : ''
     const inVault = rig.view === 'wardrobe' || rig.view === 'walk'
     if (inVault && !P.wake) P.wake = performance.now() + Math.abs(i - Math.max(0, Math.round(rig.scrollP))) * 260
     if (src && inVault && src !== P.src && !P.loading && performance.now() >= P.wake) {
       P.loading = true; P.src = src; P.ok = false
       const L = rig.layout
-      photoLoader.load(photoUrl(src, Math.min(L.sh, L.sw * 4 / 3) * 0.75 || 400), tex => {
+      photoLoader.load(photoUrl(src, Math.min(L.sh, L.sw * 4 / 3) * 0.75 || 400), loaded => {
+        let tex: THREE.Texture = loaded
         if (P.src !== src) { tex.dispose(); P.loading = false; return }
+        /* admin cut-outs are 1200x1600: draw them at 768 wide so a phone's GPU memory is not spent on pixels it cannot show */
+        const im = loaded.image as HTMLImageElement
+        if (im && im.width > 800) {
+          const c = document.createElement('canvas'); c.width = 768; c.height = Math.round(768 * im.height / im.width)
+          const x = c.getContext('2d'); if (x) { x.drawImage(im, 0, 0, c.width, c.height); loaded.dispose(); tex = new THREE.CanvasTexture(c) }
+        }
         tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4
         pmat.map?.dispose(); pmat.map = tex; pmat.needsUpdate = true
         try { gl.initTexture(tex) } catch { /* uploaded on first draw instead */ }

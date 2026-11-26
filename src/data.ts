@@ -163,6 +163,8 @@ export const TAILOR = {
    The vault shows the premium pieces (the first vaultCount()), the Attire Collection shows them all. */
 export const BUNDLED: Item[] = ITEMS.slice()
 /* premium pieces first (they are sorted before attire). 0 means the premium wardrobe is out of stock. */
+/* the picture the Elite wardrobe shows for a piece: the admin's transparent front cut-out when the live catalogue has one, else the photo itself */
+export const vaultSrc = (it: Item) => (it.cut && /^https?:/.test(it.cut) ? it.cut : it.images[0]?.src ?? '')
 export const vaultCount = () => { const n = ITEMS.findIndex(it => it.collection === 'attire'); return n < 0 ? ITEMS.length : n }
 /* Where the "Follow" link on an empty attire tour goes. [CLIENT TO CONFIRM]: the real profile URL is missing; change only this line. */
 export const FOLLOW_URL = '#'

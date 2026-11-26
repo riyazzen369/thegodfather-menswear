@@ -2,7 +2,7 @@ import { CartButton, CartDrawer, ShopBuy } from './Shop'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { withElite } from './Elite'
 import { WA_ICON, CALL_ICON } from './icons'
-import { CONTACT, ITEMS, SAMPLE_PRICES, STORE, TAILOR, vaultCount, onCatalogue, type Item, type Choice } from './data'
+import { CONTACT, ITEMS, SAMPLE_PRICES, STORE, TAILOR, vaultCount, vaultSrc, onCatalogue, type Item, type Choice } from './data'
 import Pic, { Mark, preloadPic } from './Pic'
 import Tailor from './Tailor'
 import Grid from './Grid'
@@ -118,7 +118,7 @@ export default function App(_: { rev?: number }) {
     const step = () => {
       if (dead) return
       if (k >= order.length) { setWarm(true); return }
-      const it = ITEMS[order[k++]]; if (it?.images[0]) preloadPic(it.images[0].src, garmentW())
+      const it = ITEMS[order[k++]]; if (it?.images[0]) preloadPic(vaultSrc(it), garmentW())
       window.setTimeout(step, 90)
     }
     const t = window.setTimeout(step, 400)
@@ -203,7 +203,7 @@ export default function App(_: { rev?: number }) {
     c.target = Math.min(i, c.maxP)
     if (instant || reduced) { c.p = c.target; c.v = 0 }
     /* the neighbours of where we are going are decoded before they slide in */
-    for (const k of [i - 1, i + 1]) if (k >= 0 && k < LAST) preloadPic(ITEMS[k].images[0].src, garmentW())
+    for (const k of [i - 1, i + 1]) if (k >= 0 && k < LAST) preloadPic(vaultSrc(ITEMS[k]), garmentW())
     setActive(i, dir)
   }, [setActive, railMeasure])
 
@@ -256,7 +256,7 @@ export default function App(_: { rev?: number }) {
       c.v = Math.max(-1.6, Math.min(1.6, -vpx * 1000 / c.W * 0.5))
       c.target = Math.min(to, c.maxP)
       if (reduced) { c.p = c.target; c.v = 0 }
-      if (to !== indexRef.current) { for (const k of [to - 1, to + 1]) if (k >= 0 && k < LAST) preloadPic(ITEMS[k].images[0].src, garmentW()); setActive(to, Math.sign(to - d.base) || 1) }
+      if (to !== indexRef.current) { for (const k of [to - 1, to + 1]) if (k >= 0 && k < LAST) preloadPic(vaultSrc(ITEMS[k]), garmentW()); setActive(to, Math.sign(to - d.base) || 1) }
     }
     const click = (e: MouseEvent) => {
       if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; return }
@@ -370,7 +370,7 @@ export default function App(_: { rev?: number }) {
     setView('walk')
     /* the vault is fetched while we walk: first pieces at the size they will be shown */
     const w = garmentW()
-    ITEMS.slice(0, 3).forEach(it => preloadPic(it.images[0].src, w))
+    ITEMS.slice(0, 3).forEach(it => preloadPic(vaultSrc(it), w))
     walkTimers.current.push(window.setTimeout(() => { if (viewRef.current === 'walk') landed() }, WALK_MS - 650))
   }, [landed])
   const skipWalk = useCallback(() => {
@@ -465,7 +465,7 @@ export default function App(_: { rev?: number }) {
       pre(STORE(Math.max(innerWidth, innerHeight * 16 / 9) * Math.min(2, devicePixelRatio || 1)))
       pre(TAILOR.host); pre(TAILOR.curtain); window.setTimeout(() => pre(TAILOR.walk), 1500)
       const est = innerWidth >= 960 ? Math.min(innerWidth * 0.34, innerHeight * 0.75 - 170) : Math.min(innerWidth * 0.66, innerHeight * 0.56 - 100)
-      ITEMS.slice(0, 3).forEach(it => preloadPic(it.images[0].src, est))
+      ITEMS.slice(0, 3).forEach(it => preloadPic(vaultSrc(it), est))
     }, 3000)
     return () => clearTimeout(t)
   }, [])
@@ -635,7 +635,7 @@ export default function App(_: { rev?: number }) {
             return (
               <section key={i} className="slide" data-i={i} role="group" aria-roledescription="slide" aria-label={`Item ${i + 1} of ${N}: ${p.name}`} aria-hidden={!on}>
                 <div className="stage">
-                  <Pic className="garment" src={p.images[0].src} alt={p.images[0].alt} sizes={GARMENT_SIZES}
+                  <Pic className="garment" src={vaultSrc(p)} alt={p.images[0].alt} sizes={GARMENT_SIZES}
                     load={warm || i <= loadUpTo || Math.abs(i - index) <= 2} eager={i === index || (index < 0 && i === 0)} />
                 </div>
                 <div className="copy">
