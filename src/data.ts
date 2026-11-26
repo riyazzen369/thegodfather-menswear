@@ -164,7 +164,9 @@ export const TAILOR = {
 export const BUNDLED: Item[] = ITEMS.slice()
 /* premium pieces first (they are sorted before attire). 0 means the premium wardrobe is out of stock. */
 /* the picture the Elite wardrobe shows for a piece: the admin's transparent front cut-out when the live catalogue has one, else the photo itself */
-export const vaultSrc = (it: Item) => (it.cut && /^https?:/.test(it.cut) ? it.cut : it.images[0]?.src ?? '')
+/* pieces whose live photo does not suit the vault keep the picture shipped with the site (no data change needed) */
+const VAULT_BUNDLED: Record<string, string> = { bandhgala: `${base}img/bandhgala-1.webp` }
+export const vaultSrc = (it: Item) => (it.slug && VAULT_BUNDLED[it.slug]) || (it.cut && /^https?:/.test(it.cut) ? it.cut : it.images[0]?.src ?? '')
 export const vaultCount = () => { const n = ITEMS.findIndex(it => it.collection === 'attire'); return n < 0 ? ITEMS.length : n }
 /* Where the "Follow" link on an empty attire tour goes. [CLIENT TO CONFIRM]: the real profile URL is missing; change only this line. */
 export const FOLLOW_URL = '#'
