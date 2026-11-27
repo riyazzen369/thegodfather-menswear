@@ -75,6 +75,13 @@ export function applyOrbit(stages: HTMLElement[], p: number, n: number, use3d = 
       if (lastC.get(cp) !== ck) { lastC.set(cp, ck); cp.style.opacity = cf >= 0.999 ? '' : ck.split('|')[0]; cp.style.transform = a < 0.002 ? '' : `translate3d(${(-(i - rig.scrollP) * L.slideW).toFixed(1)}px,0,0)` }
     }
     if (a > 2.5) { if (lastT.get(el) !== '') { el.style.transform = ''; el.style.removeProperty('--dim'); el.style.zIndex = ''; el.style.opacity = ''; lastT.set(el, '') } continue }
+    /* the 3D scene is drawing this piece's photo in full: its HTML picture only needs to sit still, invisible, as the tap target.
+       Skipping the per-frame transform work here keeps the main thread free while the ring turns. */
+    if (use3d && (rig.photoK[i] || 0) >= 0.999) {
+      const hide = orbitFade(a) < 0.01, k3 = hide ? 'k3h' : 'k3'
+      if (lastT.get(el) !== k3) { lastT.set(el, k3); el.style.transform = ''; el.style.opacity = '0'; el.style.visibility = hide ? 'hidden' : ''; el.style.zIndex = ''; el.style.removeProperty('--dim') }
+      continue
+    }
     const o = orbitAt(d), k = Dpx / (Dpx + o.z * pitch)
     const tx = (W / 2 + (o.x * pitch + L.sx - W / 2) * k) - (L.sx + (i - rig.scrollP) * L.slideW)
     const tr = a < 0.002 ? '' : `translate3d(${tx.toFixed(2)}px,0,0) perspective(1300px) rotateY(${(o.th * 180 / Math.PI).toFixed(2)}deg) scale(${k.toFixed(4)})`

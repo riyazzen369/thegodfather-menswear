@@ -150,7 +150,7 @@ export default function App(_: { rev?: number }) {
   /* ---- the rail: one position p (in pieces), moved by a critically damped spring or by the finger, written once per frame.
      The track no longer scrolls natively: we set scrollLeft in the same frame the 3D camera and the DOM pieces are placed,
      so pictures and gold niches can never drift apart (that drift was the stutter). Nothing re-renders while it moves. */
-  const car = useRef({ p: 0, v: 0, target: 0, drag: false, last: 0, W: 1, maxP: LAST, wrote: -1 })
+  const car = useRef({ p: 0, v: 0, q: 0, qv: 0, pl: 0, target: 0, drag: false, last: 0, W: 1, maxP: LAST, wrote: -1 })
   const railMeasure = useCallback(() => {
     const t = track.current, s0 = slides()[0]; if (!t || !s0) return
     const c = car.current; c.W = s0.offsetWidth || 1; c.maxP = Math.max(0, (t.scrollWidth - t.clientWidth) / c.W)
@@ -165,15 +165,18 @@ export default function App(_: { rev?: number }) {
     let dt = (now - c.last) / 1000; c.last = now
     if (dt <= 0) return
     dt = Math.min(dt, 0.25) /* keep real-time pace on slow frames; sub-steps keep it stable */
-    if (!c.drag && (c.p !== c.target || c.v !== 0)) {
-      /* critically damped spring (~0.9 s to settle), sub-stepped for stability */
-      const w = 6.5
+    /* two critically damped springs in a row (target -> q -> p): the glide eases IN as well as out, so a swipe never starts with a jolt */
+    if (c.p !== c.pl) { c.q = c.p; c.qv = c.v }   // p was moved by something else (finger, jump, scroll): q follows it
+    if (!c.drag && (c.p !== c.target || c.v !== 0 || c.q !== c.target || c.qv !== 0)) {
+      const w = 10
       for (let h = dt; h > 0; h -= 1 / 120) {
-        const k = Math.min(h, 1 / 120), a = -2 * w * c.v - w * w * (c.p - c.target)
-        c.v += a * k; c.p += c.v * k
+        const k = Math.min(h, 1 / 120)
+        c.qv += (-2 * w * c.qv - w * w * (c.q - c.target)) * k; c.q += c.qv * k
+        c.v += (-2 * w * c.v - w * w * (c.p - c.q)) * k; c.p += c.v * k
       }
-      if (Math.abs(c.p - c.target) < 0.0008 && Math.abs(c.v) < 0.01) { c.p = c.target; c.v = 0 }
+      if (Math.abs(c.p - c.target) < 0.0008 && Math.abs(c.v) < 0.01 && Math.abs(c.q - c.target) < 0.0008 && Math.abs(c.qv) < 0.01) { c.p = c.q = c.target; c.v = c.qv = 0 }
     }
+    c.pl = c.p
     const left = Math.max(0, Math.min(c.maxP, c.p)) * c.W
     if (Math.abs(left - c.wrote) > 0.05) { t.scrollLeft = left; c.wrote = left }
     rig.scrollP = Math.max(0, Math.min(c.maxP, c.p))

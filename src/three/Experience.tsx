@@ -355,7 +355,7 @@ function CameraRig({ path }: { path: { current: WalkPath | null } }) {
       const tx = camXAt(rig.scrollP, w) + (rig.over * 0.3 + nud) * w.unit + px * 0.12
       const ty = py * 0.08 + up * 5.5
       const tz = CAM_W + up * 4.5
-      const c = cur.current, a = 1 - Math.exp(-dt * 14)
+      const c = cur.current, a = 1 - Math.exp(-dt * 24)   /* the rail is already smooth; the camera only follows it closely */
       if (rig.snap) { c.x = tx; c.y = ty; c.z = tz; rig.snap = false }
       if (up > 0) { c.x += (tx - c.x) * a; c.y = ty; c.z = tz } else { c.x += (tx - c.x) * a; c.y += (ty - c.y) * a; c.z += (tz - c.z) * a }
       x = c.x; y = c.y; z = c.z; lx = x - px * 0.05; ly = c.y * 0.5 - up * 2.2; lz = PZ
@@ -1148,6 +1148,9 @@ function Experience({ onFail, paused = false }: { onFail: (why: string) => void;
   const T_ = TIER[tier], low = tier === 'low'
   const dpr = Math.min(T_.dpr, window.devicePixelRatio || 1)
   rig.low = low; rig.quality = (Q ? 'pinned ' : 'auto ') + tier; rig.dpr = +dpr.toFixed(2)
+  /* on a portrait phone the floor sits under the dark copy panel, so its mirror (a second render of the whole scene) is paid for and never seen */
+  const [portrait, setPortrait] = useState(() => window.innerHeight > window.innerWidth)
+  useEffect(() => { const f = () => setPortrait(window.innerHeight > window.innerWidth); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
   const path = useRef<WalkPath | null>(null)
   /* the walk-in set (shop, stairs, golden wardrobe, Lorenzo) is built once the first frame is up, in an idle moment,
      so it never adds to the first paint; it is ready long before anyone can choose the premium wardrobe */
@@ -1186,7 +1189,7 @@ function Experience({ onFail, paused = false }: { onFail: (why: string) => void;
       <ambientLight intensity={1.2} />
       <CameraRig path={path} />
       <Atmosphere path={path} />
-      <Room low={low} res={T_.reflect} />
+      <Room low={low || portrait} res={T_.reflect} />
       {ITEMS.slice(0, LAST).map((_, i) => <Piece key={i} i={i} />)}
       {(walkOn || rig.walkAt > 0) && <Walk low={low} path={path} />}
       <Dust />
