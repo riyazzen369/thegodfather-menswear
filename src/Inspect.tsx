@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Item } from './data'
 import { plainVars } from './plain'
-import { ShopBuy } from './Shop'
 
 /* Inspect a piece: drag to flip. The garment card turns around its vertical axis following the finger 1:1
    (a full card width = 180°), and on release springs to the nearest face, front (0°) or back (180°); a fast fling flips it.
@@ -10,8 +9,8 @@ import { ShopBuy } from './Shop'
    mirrored, filled with one plain fabric tone, so every piece reads consistently and nothing is invented. */
 export const cutOf = (src: string) => src.replace(/\/img\/([^/]+)\.webp$/, '/img/cut/$1.webp')
 
-export default function Inspect({ item, onClose, onDetails, enquireHref, price, reduced = false }: {
-  item: Item; threeD?: boolean; onClose: () => void; onDetails: () => void; enquireHref: string; price: string | null; reduced?: boolean
+export default function Inspect({ item, onClose, price, reduced = false }: {
+  item: Item; threeD?: boolean; onClose: () => void; price: string | null; reduced?: boolean
 }) {
   const [shown, setShown] = useState(false)
   const [ready, setReady] = useState(false)
@@ -124,11 +123,8 @@ export default function Inspect({ item, onClose, onDetails, enquireHref, price, 
         <h2 id="inspect-title">{item.name}</h2>
         <p className="inspect-tag">{item.tagline}</p>
         {price && <p className="inspect-price">{price}</p>}
-        {item.price != null
-          ? <ShopBuy item={item} />
-          : <div className="inspect-actions"><a className="btn primary" href={enquireHref} target="_blank" rel="noopener" id="inspect-wa">Enquire on WhatsApp</a></div>}
-        <button type="button" className="link inspect-more" id="inspect-details" onClick={onDetails}>Full details</button>
-        <p className="inspect-hint">Drag the piece sideways to see the back · pinch to look closer</p>
+        <p className="inspect-mini">{[item.fabric, item.details.fit].filter(Boolean).join(' · ')}</p>
+        <p className="inspect-hint">Drag sideways to flip · pinch to look closer</p>
       </aside>
       <button type="button" className="inspect-close" id="inspect-close" ref={close} onClick={onClose} aria-label="Close and return to the wardrobe">×</button>
     </div>

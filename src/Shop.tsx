@@ -43,7 +43,7 @@ function PinCheck({ id, onResult }: { id: string; onResult?: (d: Delivery | null
   )
 }
 
-export function ShopBuy({ item }: { item: Item }) {
+export function ShopBuy({ item, sticky = false }: { item: Item; sticky?: boolean }) {
   const [size, setSize] = useState(''), [qty, setQty] = useState(1), [note, setNote] = useState('')
   useEffect(() => { setSize(''); setQty(1); setNote('') }, [item])
   if (item.price == null) return null
@@ -54,7 +54,14 @@ export function ShopBuy({ item }: { item: Item }) {
     setNote('')
     return { slug: item.slug ?? item.name, name: item.name, size, price: item.price!, qty: Math.min(qty, max), img: item.images[0]?.src ?? '' }
   }
+  const BUY = (
+      <div className={`buy-row ${sticky ? 'sticky' : ''}`}>
+        <button type="button" className="btn ghost" id="add-cart" onClick={() => { const l = line(); if (l) { cart.add(l); cart.show() } }}>Add to cart</button>
+        <button type="button" className="btn primary" id="buy-now" onClick={() => { const l = line(); if (l) { cart.add(l); cart.show() } }}>Buy now</button>
+      </div>
+  )
   return (
+    <>
     <div className="shop" id="shop">
       <p className="shop-price"><b>{inr.format(item.price)}</b></p>
       <fieldset className="sizes">
@@ -75,11 +82,10 @@ export function ShopBuy({ item }: { item: Item }) {
       </div>
       <PinCheck id="shop-pin" />
       {note && <p className="pin-out bad" role="alert">{note}</p>}
-      <div className="buy-row">
-        <button type="button" className="btn ghost" id="add-cart" onClick={() => { const l = line(); if (l) { cart.add(l); cart.show() } }}>Add to cart</button>
-        <button type="button" className="btn primary" id="buy-now" onClick={() => { const l = line(); if (l) { cart.add(l); cart.show() } }}>Buy now</button>
-      </div>
+      {!sticky && BUY}
     </div>
+    {sticky && BUY}
+    </>
   )
 }
 

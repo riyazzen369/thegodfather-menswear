@@ -23,7 +23,7 @@ const URL = process.env.URL || 'http://localhost:8795/'; const OUT = path.join(_
     for (let i = 0; i < n; i++) {
       for (let k = 0; k < 20 && await p.evaluate(() => window.__rig.index) !== i; k++) { const dir = await p.evaluate(() => window.__rig.index) < i ? 1 : -1; const from = await p.evaluate(() => Math.round(window.__rig.scrollP)); await p.keyboard.press(dir > 0 ? 'ArrowRight' : 'ArrowLeft'); await restOn(p, from + dir) }
       await p.waitForFunction(() => { const r = window.__rig; return Math.abs(r.scrollP - Math.round(r.scrollP)) < 0.002 }, null, { timeout: 15000 })
-      await p.locator('.slide.is-active .details').click({ force: true }); await p.waitForSelector('.inspect.ready', { timeout: 15000 }); await sleep(700)
+      await p.locator('.slide.is-active .garment').click({ force: true }); await p.waitForSelector('.inspect.ready', { timeout: 15000 }); await sleep(700)
       const card = await p.locator('.flip-card').boundingBox(), y = card.y + card.height * 0.5, cx = card.x + card.width / 2
       let f = await F(); ok(`${W} item ${i}: opens on the front`, f.face === 'front' && f.a === 0, JSON.stringify(f))
       if (process.env.SHOTS && mob && i === +(process.env.ONLY || 10)) await p.locator('.inspect-stage').screenshot({ path: path.join(OUT, `flip-${W}-${i}-front.png`) })

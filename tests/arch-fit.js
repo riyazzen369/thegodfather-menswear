@@ -22,6 +22,6 @@ print('red', (min(xs),max(xs),min(ys),max(ys)) if xs else None)
 " > ${OUT}/red.txt`)
   const t = fs.readFileSync(OUT + '/red.txt', 'utf8'); console.log(t.trim())
   const m = t.match(/\((\d+), (\d+), (\d+), (\d+)\)/); ok(!!m, 'the subject is drawn')
-  if (m) { const [x0, x1, y0, y1] = m.slice(1).map(Number); const cx = (x0 + x1) / 2, h = y1 - y0; ok(Math.abs(cx - 182) < 30, `centred (x ${cx.toFixed(0)} of 390, plane centre ~182)`); ok(h > 300 && h < 370, `fills the arch without poking out (${h}px of ~425)`) }
+  if (m) { const [x0, x1, y0, y1] = m.slice(1).map(Number); const cx = (x0 + x1) / 2, h = y1 - y0; ok(Math.abs(cx - 182) < 30, `centred (x ${cx.toFixed(0)} of 390, plane centre ~182)`); ok(h > 190 && h < 300, `fills the arch without poking out (${h}px; the piece area is ~300 px tall now)`) }
   process.exit(fails ? 1 : 0)
 })()

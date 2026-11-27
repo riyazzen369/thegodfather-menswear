@@ -493,6 +493,7 @@ export default function App(_: { rev?: number }) {
       if (v === 'walk' && e.key === 'Escape') { skipWalk(); return }
       if (v === 'tailor') return  /* Esc there finishes the intro (handled in Tailor) */
       if (v !== 'wardrobe') return
+      if ((e.target as HTMLElement | null)?.closest?.('input,textarea,select')) return   /* typing a pincode must not move the rail */
       if (e.key === 'ArrowRight') { e.preventDefault(); goTo(indexRef.current + 1) }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(indexRef.current - 1) }
       else if (e.key === 'Home') { e.preventDefault(); goTo(0) }
@@ -641,15 +642,21 @@ export default function App(_: { rev?: number }) {
                   <Pic className="garment" src={vaultSrc(p)} alt={p.images[0].alt} sizes={GARMENT_SIZES}
                     load={warm || i <= loadUpTo || Math.abs(i - index) <= 2} eager={i === index || (index < 0 && i === 0)} />
                 </div>
-                <div className="copy">
+                <div className="copy" inert={!on}>
                   <p className="kicker" aria-hidden="true">{pad(i + 1)} <span>/ {pad(N)}</span></p>
                   <h2 className="name line" style={{ '--i': 0 } as React.CSSProperties}>{p.name}</h2>
+                  {p.tagline && <p className="tag line" style={{ '--i': 1 } as React.CSSProperties}>{p.tagline}</p>}
                   <p className="fabric line" style={{ '--i': 1 } as React.CSSProperties}>{p.fabric}</p>
                   {p.price != null && <p className="price line" style={{ '--i': 2 } as React.CSSProperties}>From {inr.format(p.price)}{SAMPLE_PRICES && <small>sample price</small>}</p>}
-                  <div className="actions line" style={{ '--i': 3 } as React.CSSProperties}>
-                    <a className="btn primary" href={enquire(p)} target="_blank" rel="noopener" tabIndex={on ? 0 : -1}>{WA_ICON}Enquire on WhatsApp</a>
-                    <button className="link details" type="button" tabIndex={on ? 0 : -1} onClick={e => openInspect(i, e.currentTarget)}>View details</button>
-                  </div>
+                  <dl className="specs line" style={{ '--i': 3 } as React.CSSProperties}>
+                    {p.details.fit && <><dt>Fit</dt><dd>{p.details.fit}</dd></>}
+                    {p.colours.length > 0 && <><dt>Colours</dt><dd><span className="swatches">{p.colours.map(c => <span className="swatch" key={c.name}><b style={{ background: c.hex }} />{c.name}</span>)}</span></dd></>}
+                    {p.details.madeToMeasure && <><dt>Made to measure</dt><dd>{p.details.madeToMeasure}</dd></>}
+                    {p.details.delivery && <><dt>Delivery</dt><dd>{p.details.delivery}</dd></>}
+                  </dl>
+                  {on && (p.price != null
+                    ? <ShopBuy item={p} sticky />
+                    : <a className="btn primary" href={enquire(p)} target="_blank" rel="noopener">{WA_ICON}Enquire on WhatsApp</a>)}
                 </div>
               </section>
             )
@@ -682,10 +689,9 @@ export default function App(_: { rev?: number }) {
       </div>
 
       {inspect !== null && <Suspense fallback={null}>
-        <Inspect item={ITEMS[inspect]} reduced={reduced} enquireHref={enquire(ITEMS[inspect])}
+        <Inspect item={ITEMS[inspect]} reduced={reduced}
           price={ITEMS[inspect].price != null ? `From ${inr.format(ITEMS[inspect].price!)}` : null}
-          onClose={() => closeInspect()}
-          onDetails={() => { const i = inspect, op = inspectFrom.current; closeInspect(() => { if (op) openSheet(i, op) }) }} />
+          onClose={() => closeInspect()} />
       </Suspense>}
       {outOfStock && (
         <div className="oos" id="out-of-stock" role="alertdialog" aria-modal="true" aria-labelledby="oos-title">

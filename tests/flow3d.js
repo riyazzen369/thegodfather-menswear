@@ -22,23 +22,23 @@ async function run(name, vp, mobile) {
   for (let i = 1; i <= 3; i++) { await p.keyboard.press('ArrowRight'); await sleep(2200); s = await st(); ok(s.idx === i && Math.abs(s.p - i) < 0.05, name + `: next -> piece ${i + 1} settled (idx ${s.idx}, p ${s.p})`) ; if (i === 2) await shot('07-vault-3') }
   await p.keyboard.press('ArrowLeft'); await sleep(2200); s = await st(); ok(s.idx === 2, name + ': prev -> idx 2'); ok(s.sw <= s.cw + 1, name + ': no horizontal overflow in vault')
   const vis = await p.evaluate(() => [...document.querySelectorAll('.track .stage')].filter(e => e.style.visibility !== 'hidden' && (e.style.opacity === '' || +e.style.opacity > 0.05) && e.getBoundingClientRect().right > 0 && e.getBoundingClientRect().left < innerWidth).length); ok(vis === 1, name + ': one piece on screen at rest (' + vis + ')')
-  // sheet (details)
-  await p.locator('.slide.is-active .details, .slide.is-active [data-details], #ask').first().click({ timeout: 3000 }).catch(() => {}); await sleep(1500); await shot('08-sheet'); 
-  const sheetOpen = await p.locator('#sheet').evaluate(e => e.classList.contains('open') || getComputedStyle(e).visibility !== 'hidden').catch(() => false)
-  await p.keyboard.press('Escape'); await sleep(800)
+  // the vault slide itself: description, details and buying options under the piece
+  ok(await p.locator('.slide.is-active .specs').count() === 1, name + ': details list is on the vault slide')
+  ok(await p.locator('.slide.is-active .size-row .chip').count() >= 4, name + ': sizes are open on the vault slide')
+  ok(await p.locator('.slide.is-active a[href*="wa.me"], .slide.is-active .details').count() === 0, name + ': no Enquire / View details under the piece')
+  const bb = await p.locator('.slide.is-active .buy-row').boundingBox(); ok(!!bb && bb.y + bb.height <= (vp.height) && bb.y > vp.height * 0.45, name + ': Add to cart / Buy now are pinned inside the screen')
+  await shot('07b-vault-buy')
+  await p.locator('.slide.is-active #add-cart').click({ timeout: 4000 }).catch(() => {}); await sleep(400)
+  ok(/choose a size/i.test(await p.locator('.slide.is-active').innerText()), name + ': Add to cart without a size asks for one')
+  await p.locator('.slide.is-active .size-row .chip:not([disabled])').first().click({ timeout: 4000 }).catch(() => {})
+  await p.locator('.slide.is-active #add-cart').click({ timeout: 4000 }).catch(() => {}); await sleep(1200); await shot('07c-vault-cart')
+  ok(await p.evaluate(() => { const c = document.querySelector('#cart'); if (!c) return false; const r = c.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && c.contains(e) }), name + ': cart opens above the vault')
+  await p.locator('#cart-close').click({ timeout: 4000 }).catch(() => {}); await sleep(800)
   // tap the piece -> inspect 3D
   const g = p.locator('.slide.is-active .garment').first(); await g.click({ timeout: 3000 }).catch(() => {}); await sleep(3500); await shot('09-inspect'); const insp = await p.locator('#inspect.open').count(); ok(insp === 1, name + ': tap opens 3D inspect')
   if (insp) {
-    ok(await p.locator('#inspect-wa, #inspect-flip').count() === 0, name + ': inspect has no Enquire / Show back buttons')
-    ok(await p.locator('#inspect .size-row .chip').count() >= 4, name + ': sizes are open in the inspect panel')
-    await p.locator('#inspect #add-cart').scrollIntoViewIfNeeded().catch(() => {}); await shot('09b-inspect-buy')
-    await p.locator('#inspect #add-cart').click({ timeout: 4000 }).catch(() => {}); await sleep(500)
-    ok(/choose a size/i.test(await p.locator('#inspect').innerText()), name + ': Add to cart without a size asks for one')
-    await p.locator('#inspect .size-row .chip:not([disabled])').first().click({ timeout: 4000 }).catch(() => {})
-    await p.locator('#inspect #add-cart').click({ timeout: 4000 }).catch(() => {}); await sleep(1200); await shot('09c-inspect-cart')
-    const cartVis = await p.evaluate(() => { const c = document.querySelector('#cart'); if (!c) return false; const r = c.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && c.contains(e) })
-    ok(cartVis, name + ': cart opens above the inspect screen')
-    await p.locator('#cart-close').click({ timeout: 4000 }).catch(() => {}); await sleep(800)
+    ok(await p.locator('#inspect #add-cart, #inspect #buy-now, #inspect .size-row, #inspect-wa, #inspect-flip, #inspect-details').count() === 0, name + ': inspect has no buying options, Enquire, Show back or details button')
+    ok(/Animal-print|\S/.test(await p.locator('#inspect-title').innerText()), name + ': inspect shows the name')
     await p.keyboard.press('ArrowRight'); await sleep(1500); await shot('10-inspect-back'); await p.locator('#inspect-close').click({ timeout: 4000 }).catch(() => {}); await sleep(1500); s = await st(); ok(s.view === 'wardrobe', name + ': inspect closes back to vault') }
   // back to storefront, then grid
   await p.locator(mobile ? '#ask' : '#back-shop').click({ timeout: 4000 }).catch(() => {}); await sleep(3000); s = await st(); ok(s.view === 'tailor', name + ': back to storefront (' + s.view + ')'); await shot('11-back-tailor')
