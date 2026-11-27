@@ -760,7 +760,7 @@ export default function App(_: { rev?: number }) {
             <dl className="specs" id="specs">
               <dt>Fabric</dt><dd>{it.fabric}</dd>
               <dt>Fit</dt><dd>{it.details.fit}</dd>
-              <dt>Colours</dt><dd><span className="swatches">{it.colours.map(c => <span className="swatch" key={c.name}><b style={{ background: c.hex }} />{c.name}</span>)}</span></dd>
+              {it.colours.length > 0 && <><dt>Colours</dt><dd><span className="swatches">{it.colours.map(c => <span className="swatch" key={c.name}><b style={{ background: c.hex }} />{c.name}</span>)}</span></dd></>}
               <dt>Made to measure</dt><dd>{it.details.madeToMeasure}</dd>
               <dt>Delivery</dt><dd>{it.details.delivery}</dd>
               {it.price != null && SAMPLE_PRICES && <><dt>Price</dt><dd>Sample price, subject to change</dd></>}

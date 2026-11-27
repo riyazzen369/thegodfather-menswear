@@ -314,7 +314,7 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
         uploaded.push(path)
         return path
       }
-      const row: Draft = { ...d, slug, name: d.name.trim(), nudge: { ...(d.nudge || {}) }, src_paths: { ...(d.src_paths || {}) } }
+      const row: Draft = { ...d, slug, name: d.name.trim(), colours: (d.colours || []).filter(c => c.name.trim()).map(c => ({ name: c.name.trim().slice(0, 24), hex: /^#[0-9a-f]{6}$/i.test(c.hex) ? c.hex : '#000000' })), nudge: { ...(d.nudge || {}) }, src_paths: { ...(d.src_paths || {}) } }
       const F = faces.front, B = faces.back
       if (F?.placed) {
         old.push(...[d.front_path, d.front_cut_path].filter(Boolean) as string[])
@@ -399,6 +399,16 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
             <label>Made to measure<input value={d.details.madeToMeasure ?? ''} onChange={e => setDet('madeToMeasure', e.target.value)} /></label>
           </div>
           <label>Delivery<input value={d.details.delivery ?? ''} onChange={e => setDet('delivery', e.target.value)} /></label>
+          <fieldset className="stock colours" id="f-colours"><legend>Colours (optional: shown on the site only when you add some)</legend>
+            {(d.colours || []).map((c, i) => (
+              <div className="row colour" key={i}>
+                <label>Colour<input type="color" aria-label={`Colour ${i + 1} swatch`} value={/^#[0-9a-f]{6}$/i.test(c.hex) ? c.hex : '#000000'} onChange={e => setD(x => ({ ...x, colours: x.colours.map((k, j) => j === i ? { ...k, hex: e.target.value } : k) }))} /></label>
+                <label>Name<input aria-label={`Colour ${i + 1} name`} value={c.name} maxLength={24} placeholder="e.g. Navy" onChange={e => setD(x => ({ ...x, colours: x.colours.map((k, j) => j === i ? { ...k, name: e.target.value } : k) }))} /></label>
+                <button type="button" className="ghost" onClick={() => setD(x => ({ ...x, colours: x.colours.filter((_, j) => j !== i) }))}>Remove</button>
+              </div>
+            ))}
+            {(d.colours || []).length < 6 && <button type="button" className="ghost" id="f-add-colour" onClick={() => setD(x => ({ ...x, colours: [...(x.colours || []), { name: '', hex: '#1c2238' }] }))}>+ Add a colour</button>}
+          </fieldset>
           <label className="pub big"><input id="f-published" type="checkbox" checked={d.published} onChange={e => set('published', e.target.checked)} /> Published (visible on the site)</label>
         </div>
         <div className="adm-media">
