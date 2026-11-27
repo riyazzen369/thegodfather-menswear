@@ -1,0 +1,16 @@
+const { chromium } = require('playwright'); const { ARGS } = require('./gl')
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+;(async () => {
+  const b = await chromium.launch({ args: ARGS }); const c = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }); const p = await c.newPage(); p.on('console', m => { if (/^T /.test(m.text())) console.log('  ' + m.text() + '  @' + Date.now() % 100000) })
+  const cdp = await c.newCDPSession(p); await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 500 })
+  await p.goto('http://localhost:8795/?force3d&q=low'); await p.evaluate(() => sessionStorage.setItem('gf-entered', '1'))
+  await p.reload(); await sleep(7000)
+  await p.keyboard.press('Escape'); await sleep(300); await cdp.send('Profiler.start'); await p.locator('#choice-premium').click(); await sleep(2500)
+  const { profile } = await cdp.send('Profiler.stop')
+  const byId = new Map(profile.nodes.map(n => [n.id, n])); const parent = new Map(); profile.nodes.forEach(n => (n.children || []).forEach(ch => parent.set(ch, n.id)))
+  const incl = new Map(), self = new Map(); const dt = profile.timeDeltas
+  profile.samples.forEach((id, i) => { const ms = dt[i] / 1000; const cf = byId.get(id).callFrame; const k = (cf.functionName || '(anon)') + ' ' + cf.url.split('/').pop() + ':' + cf.lineNumber; self.set(k, (self.get(k) || 0) + ms)
+    const seen = new Set(); let n = id; while (n) { const f = byId.get(n).callFrame; const kk = (f.functionName || '(anon)') + ' ' + f.url.split('/').pop() + ':' + f.lineNumber; if (!seen.has(kk)) { seen.add(kk); incl.set(kk, (incl.get(kk) || 0) + ms) } n = parent.get(n) } })
+  const top = (m, n) => [...m.entries()].filter(([k]) => !/^\((program|idle|root)\)/.test(k)).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => v.toFixed(0).padStart(6) + ' ms  ' + k).join('\n')
+  console.log('SELF\n' + top(self, 12)); console.log('INCLUSIVE\n' + top(incl, 22))
+  await b.close() })()

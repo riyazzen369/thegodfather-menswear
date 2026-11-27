@@ -854,7 +854,12 @@ function Walk({ low, path }: { low: boolean; path: { current: WalkPath | null } 
       const hidden: THREE.Object3D[] = []
       scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true } })
       /* upload the walk's textures now too (marble, brass, wood), not on the first frame of the walk */
-      grp.traverse(o => { const mt = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined; if (mt && 'map' in mt && mt.map) { try { gl.initTexture(mt.map) } catch { /* later */ } } })
+      /* one texture per timer tick, not all in one go: a single burst of uploads froze the storefront intro for a moment */
+      const texs = new Set<THREE.Texture>()
+      grp.traverse(o => { const mt = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined; if (mt && 'map' in mt && mt.map) texs.add(mt.map) })
+      let ti = 0; const up = [...texs]
+      const next = () => { if (ti >= up.length) return; try { gl.initTexture(up[ti++]) } catch { /* later */ } window.setTimeout(next, 70) }
+      window.setTimeout(next, 200)
       /* async where the driver supports parallel compile, so the gate's glow never stalls while it happens */
       const restore = () => hidden.forEach(o => { o.visible = false })
       try {
@@ -1000,7 +1005,8 @@ function Piece({ i }: { i: number }) {
     wm.uniforms.uI.value = (0.03 + 0.16 * s.s) * fd
     /* ---- the photo ---- */
     const P = phs.current, src = ITEMS[i] ? vaultSrc(ITEMS[i]) : ''
-    const inVault = rig.view === 'wardrobe' || rig.view === 'walk'
+    /* the photos are not needed until the vault is in sight: loading them at the start of the walk put a burst of uploads on its first frames */
+    const inVault = rig.view === 'wardrobe' || (rig.view === 'walk' && walkTime() > WALK_MS / 1000 * 0.55)
     if (inVault && !P.wake) P.wake = performance.now() + Math.abs(i - Math.max(0, Math.round(rig.scrollP))) * 260
     if (src && inVault && src !== P.src && !P.loading && performance.now() >= P.wake) {
       P.loading = true; P.src = src; P.ok = false

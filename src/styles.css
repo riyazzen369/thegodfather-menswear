@@ -250,11 +250,11 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .sf-photo{animation:lightsOn 2.6s steps(1,end) both}
 /* the neon sign (part of the store photo): a sharp copy on top keeps the letters crisp; the glow is its own blurred layer underneath.
    Steady and subtle for 3s, then a 0.5s flicker up to bright neon; the cycle repeats every 3.5s. */
-.sf-neon{clip-path:inset(7% 40% 69% 39.5%);mix-blend-mode:screen;filter:saturate(1.15) brightness(.55);animation:neonOn 2.6s linear both, signSharp 3.5s linear 2.6s infinite}
+.sf-neon{clip-path:inset(7% 40% 69% 39.5%);mix-blend-mode:screen;filter:saturate(1.25) brightness(1.2);animation:neonOn 2.6s linear both, signSharp 3.5s linear 2.6s infinite}
 .sf-neon.glow{filter:blur(14px) saturate(1.5) brightness(1.6);clip-path:inset(2% 34% 63% 34%);opacity:.14;animation:glowOn 2.6s linear both, signGlow 3.5s linear 2.6s infinite}
 @keyframes glowOn{0%,30%{opacity:0}33%{opacity:.4}36%{opacity:.04}44%{opacity:.5}47%{opacity:.1}55%{opacity:.2}100%{opacity:.14}}
 @keyframes signGlow{0%{opacity:.14}2%{opacity:.62}4%{opacity:.22}6.5%{opacity:.7}9%{opacity:.4}11.5%{opacity:.66}14.3%,100%{opacity:.14}}
-@keyframes signSharp{0%{filter:saturate(1.15) brightness(.55)}2%{filter:saturate(1.25) brightness(1.1)}4%{filter:saturate(1.15) brightness(.7)}6.5%{filter:saturate(1.3) brightness(1.2)}9%{filter:saturate(1.2) brightness(.9)}11.5%{filter:saturate(1.3) brightness(1.15)}14.3%,100%{filter:saturate(1.15) brightness(.55)}}
+@keyframes signSharp{0%{opacity:.46}2%{opacity:.92}4%{opacity:.58}6.5%{opacity:1}9%{opacity:.75}11.5%{opacity:.96}14.3%,100%{opacity:.46}}   /* opacity (compositor) instead of a filter that repainted a large blended layer */
 @media (prefers-reduced-motion: reduce){ .sf-neon,.sf-neon.glow{animation:none} .sf-neon{opacity:1} .sf-neon.glow{opacity:.14} }
 .sf-wet{clip-path:inset(77% 0 0 0);mix-blend-mode:screen;opacity:.28;filter:blur(1.5px) brightness(1.4);transform-origin:50% 88%;animation:sheen 5s ease-in-out infinite alternate}
 .sf-door{position:absolute;left:46%;top:44%;width:14%;height:33%;background:radial-gradient(ellipse at 50% 70%, rgba(255,200,150,.12), transparent 70%);mix-blend-mode:screen}
@@ -306,8 +306,8 @@ canvas.gl, .gl{position:fixed!important;inset:0;width:100%!important;height:100%
 .sf-sub{display:none;margin:12px 0 0;max-width:40ch;color:#cfc4b4;font-size:.9rem;line-height:1.5}
 @keyframes riseIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 .sf-panel{position:absolute;z-index:5;left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);bottom:calc(var(--sab) + 12px);
-  padding:16px 16px 14px;border:1px solid rgba(255,42,58,.55);border-radius:6px;background:rgba(8,5,6,.72);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:0 20px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.4) inset;
+  padding:16px 16px 14px;border:1px solid rgba(255,42,58,.55);border-radius:6px;background:rgba(8,5,6,.9);
+  box-shadow:0 20px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.4) inset;   /* no backdrop blur: re-blurring the moving rain and host behind a full-width panel every frame is what dropped phones to ~45 fps */
   animation:fadeIn .8s var(--ease) var(--t-panel) both}
 .sf-who{margin:0 0 8px;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
 .sf-who b{color:var(--neon);font-weight:600}
