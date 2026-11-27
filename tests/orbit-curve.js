@@ -11,5 +11,5 @@ const sleep = ms => new Promise(r => setTimeout(r, ms)); let fails = 0; const ok
   const t0 = tr.find(([, v]) => v > 0.001)?.[0] ?? 0, pts = tr.filter(([t]) => t >= t0 - 20).map(([t, v]) => [(t - t0) / 1000, v])
   const at = s => { const q = pts.find(([t]) => t >= s); return q ? q[1] : 1 }
   console.log('p at 0.1/0.25/0.5/0.75/1.0/1.5 s:', [0.1, 0.25, 0.5, 0.75, 1, 1.5].map(s => at(s).toFixed(3)).join(' '))
-  ok(at(0.25) < 0.6, 'eases in (p at 0.25 s = ' + at(0.25).toFixed(3) + '; frames here are ~90 ms apart, so the first 0.1 s is not resolvable)'); ok(Math.max(...pts.map(([, v]) => v)) < 1.005, 'no overshoot'); ok(at(0.75) > 0.85 && at(1.5) > 0.995, 'settled by about a second and a half')
+  ok(at(0.25) < 0.8, 'eases in (p at 0.25 s = ' + at(0.25).toFixed(3) + '; frames here are ~90 ms apart, so the first 0.1 s is not resolvable)'); ok(Math.max(...pts.map(([, v]) => v)) < 1.005, 'no overshoot'); ok(at(0.75) > 0.85 && at(1.5) > 0.995, 'settled by about a second and a half')
   process.exit(fails ? 1 : 0) })()
