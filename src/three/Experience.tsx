@@ -941,6 +941,33 @@ function edgeMask() {
   }
   x.putImageData(d, 0, 0); edgeTex = new THREE.CanvasTexture(c); return edgeTex
 }
+/* Admin cut-outs come in every framing (small full-body, cropped torso, off-centre). Find the subject's box in the alpha channel and redraw it
+   so every piece fills the golden arch the same way: centred, head just under the arch top, standing on the plinth, never wider than the arch.
+   Opaque plated photos (the shipped ones) have no alpha, so they are left exactly as they are. Returns null when nothing should change. */
+const FIT = { h: 0.80, bottom: 0.935, maxW: 0.72 }   // fractions of the photo plane, measured on screen: the arch runs v 0.09-0.95 and is 0.89 as wide as the plane
+function fitSubject(im: HTMLImageElement | ImageBitmap): HTMLCanvasElement | null {
+  const PW = 96, PH = 128, pc = document.createElement('canvas'); pc.width = PW; pc.height = PH
+  const px = pc.getContext('2d', { willReadFrequently: true }); if (!px) return null
+  px.drawImage(im, 0, 0, PW, PH)
+  const d = px.getImageData(0, 0, PW, PH).data
+  let x0 = PW, x1 = -1, y0 = PH, y1 = -1, soft = 0
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {
+    const a = d[(y * PW + x) * 4 + 3]
+    if (a < 250) soft++
+    if (a > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y }
+  }
+  if (x1 < 0 || soft < PW * PH * 0.04) return null                    // opaque photo, or empty: leave it
+  const bw = (x1 - x0 + 1) / PW, bh = (y1 - y0 + 1) / PH
+  if (bw < 0.12 || bh < 0.12) return null
+  const k = Math.max(0.5, Math.min(2.4, Math.min(FIT.h / bh, FIT.maxW / bw)))
+  const W = Math.min(768, (im as HTMLImageElement).width || 768), H = Math.round(W * 4 / 3)
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const x = c.getContext('2d'); if (!x) return null
+  const cx = ((x0 + x1 + 1) / 2 / PW) * (im as HTMLImageElement).width, bottom = ((y1 + 1) / PH) * (im as HTMLImageElement).height
+  const sc = k * (W / (im as HTMLImageElement).width)
+  x.drawImage(im, 0, 0, (im as HTMLImageElement).width, (im as HTMLImageElement).height, W / 2 - cx * sc, FIT.bottom * H - bottom * sc, (im as HTMLImageElement).width * sc, (im as HTMLImageElement).height * sc)
+  return c
+}
 const photoLoader = (() => { const l = new THREE.TextureLoader(); l.setCrossOrigin('anonymous'); return l })()
 
 /* ---------------- one piece in the wardrobe ---------------- */
@@ -1008,11 +1035,13 @@ function Piece({ i }: { i: number }) {
       photoLoader.load(photoUrl(src, Math.min(L.sh, L.sw * 4 / 3) * 0.75 || 400), loaded => {
         let tex: THREE.Texture = loaded
         if (P.src !== src) { tex.dispose(); P.loading = false; return }
-        /* admin cut-outs are 1200x1600: draw them at 768 wide so a phone's GPU memory is not spent on pixels it cannot show */
+        /* centre and size the subject in the arch; big cut-outs (1200x1600) are drawn at 768 wide so a phone's GPU memory is not wasted */
         const im = loaded.image as HTMLImageElement
-        if (im && im.width > 800) {
-          const c = document.createElement('canvas'); c.width = 768; c.height = Math.round(768 * im.height / im.width)
-          const x = c.getContext('2d'); if (x) { x.drawImage(im, 0, 0, c.width, c.height); loaded.dispose(); tex = new THREE.CanvasTexture(c) }
+        if (im && im.width > 0) {
+          let c: HTMLCanvasElement | null = null
+          try { c = fitSubject(im) } catch { c = null }
+          if (!c && im.width > 800) { c = document.createElement('canvas'); c.width = 768; c.height = Math.round(768 * im.height / im.width); c.getContext('2d')?.drawImage(im, 0, 0, c.width, c.height) }
+          if (c) { loaded.dispose(); tex = new THREE.CanvasTexture(c) }
         }
         tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4
         pmat.map?.dispose(); pmat.map = tex; pmat.needsUpdate = true
