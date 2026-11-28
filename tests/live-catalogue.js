@@ -184,7 +184,9 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
     await a.waitForSelector('#prev-vault[src^="blob:"]', { timeout: 240000 });
     const tFront = Date.now() - T0;
     await a.setInputFiles('#f-back', path.join(__dirname, 'fixtures/tee-back-phone.jpg'));
-    await a.waitForFunction(() => document.querySelector('.nudges[data-face="back"]'), null, { timeout: 240000 }); await sleep(600);
+    try { await a.waitForFunction(() => document.querySelector('.nudges[data-face="back"]'), null, { timeout: 90000 }) }
+    catch (e) { console.log('DEBUG back photo never ready:', JSON.stringify(await a.evaluate(() => ({ busy: document.querySelector('.busy, [role=status]')?.textContent, method: document.querySelector('#f-method')?.textContent, err: document.querySelector('.err, [role=alert]')?.textContent, nudges: [...document.querySelectorAll('.nudges')].map(n => n.dataset.face), back: !!document.querySelector('#f-back') })))); throw e }
+    await sleep(600);
     const method = await a.textContent('#f-method').catch(() => '');
     ok(`admin: background removed in the browser (${Math.round(tFront / 1000)}s front)`, /removed automatically/.test(method || ''), method);
     await a.click('[data-n="front-s-plus"]'); await a.click('[data-n="front-s-plus"]'); await a.click('[data-n="back-y-minus"]'); await sleep(1500);
