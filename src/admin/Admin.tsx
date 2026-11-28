@@ -413,8 +413,8 @@ function Editor({ sb, draft, onDone }: { sb: SupabaseClient; draft: Draft; onDon
         </div>
         <div className="adm-media">
           <div className="pickers">
-            <div><Drop label="Front photo" id="f-front" onFile={f => pick(f, 'front')} has={!!frontUrl} /><Nudges which="front" /></div>
-            <div><Drop label="Back photo (optional)" id="f-back" onFile={f => pick(f, 'back')} has={!!backUrl} onClear={backUrl ? () => { setFaces(x => ({ ...x, back: null })); setDropBack(true) } : undefined} /><Nudges which="back" />
+            <div><Drop label="Front photo" id="f-front" onFile={f => pick(f, 'front')} has={!!frontUrl} />{Nudges({ which: 'front' })}</div>
+            <div><Drop label="Back photo (optional)" id="f-back" onFile={f => pick(f, 'back')} has={!!backUrl} onClear={backUrl ? () => { setFaces(x => ({ ...x, back: null })); setDropBack(true) } : undefined} />{Nudges({ which: 'back' })}
               {(faces.front || d.src_paths?.front) && (faces.back || d.src_paths?.back) && !dropBack && <div className="plain-opt"><button type="button" id="f-autofit" className="ghost" disabled={!!busy} onClick={autoFitBack}>Auto fit back to front</button>
                 {fitNote && <p className="note" id="f-fit-note" role="status">{fitNote}</p>}</div>}</div>
           </div>
