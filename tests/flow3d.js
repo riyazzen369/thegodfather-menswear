@@ -21,7 +21,7 @@ async function run(name, vp, mobile) {
   // vault movement: next x3, prev x1, with settle checks
   for (let i = 1; i <= 3; i++) { await p.keyboard.press('ArrowRight'); await sleep(2200); s = await st(); ok(s.idx === i && Math.abs(s.p - i) < 0.05, name + `: next -> piece ${i + 1} settled (idx ${s.idx}, p ${s.p})`) ; if (i === 2) await shot('07-vault-3') }
   await p.keyboard.press('ArrowLeft'); await sleep(2200); s = await st(); ok(s.idx === 2, name + ': prev -> idx 2'); ok(s.sw <= s.cw + 1, name + ': no horizontal overflow in vault')
-  const vis = await p.evaluate(() => [...document.querySelectorAll('.track .stage')].filter(e => e.style.visibility !== 'hidden' && (e.style.opacity === '' || +e.style.opacity > 0.05) && e.getBoundingClientRect().right > 0 && e.getBoundingClientRect().left < innerWidth).length); ok(vis === 1, name + ': one piece on screen at rest (' + vis + ')')
+  const vis = await p.evaluate(() => window.__rig.photoK.filter((k, i) => k > 0.5 && Math.abs(i - window.__rig.scrollP) < 0.6).length); ok(vis === 1, name + ': one piece drawn in the arch at rest (' + vis + ')')
   // the vault slide itself: description, details and buying options under the piece
   ok(await p.locator('.slide.is-active .specs').count() === 1, name + ': details list is on the vault slide')
   ok(await p.locator('.slide.is-active .size-row .chip').count() >= 4, name + ': sizes are open on the vault slide')
