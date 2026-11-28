@@ -93,11 +93,11 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
       ok(`${tag}: vault shows the 3 premium pieces only`, v.slides === 3, JSON.stringify(v));
       if (tag === 'desktop') {
         await p.keyboard.press('ArrowRight'); await sleep(2500);
-        await p.locator('.slide.is-active .details').click({ timeout: 8000 }); await p.waitForSelector('.inspect.open', { timeout: 8000 }); await sleep(800);
+        await p.locator('.slide.is-active .garment').click({ timeout: 8000, force: true }); await p.waitForSelector('.inspect.open', { timeout: 8000 }); await sleep(800);
         const fb = await p.evaluate(() => ({ t: document.querySelector('#inspect-title')?.textContent, back: document.querySelector('.flip-back img')?.getAttribute('src') || null, plain: !!document.querySelector('.flip-plain') }));
         ok('desktop: flip view shows the DB back photo', /Camel Coat/.test(fb.t || '') && /camel-coat\/back\.webp/.test(fb.back || ''), JSON.stringify(fb));
         await p.keyboard.press('Escape'); await sleep(900); await p.keyboard.press('ArrowRight'); await sleep(2500);
-        await p.locator('.slide.is-active .details').click({ timeout: 8000 }); await p.waitForSelector('.inspect.open', { timeout: 8000 }); await sleep(500);
+        await p.locator('.slide.is-active .garment').click({ timeout: 8000, force: true }); await p.waitForSelector('.inspect.open', { timeout: 8000 }); await sleep(500);
         const fp = await p.evaluate(() => ({ t: document.querySelector('#inspect-title')?.textContent, plain: !!document.querySelector('.flip-plain') }));
         ok('desktop: no back photo -> shared plain back', /Velvet/.test(fp.t || '') && fp.plain, JSON.stringify(fp));
       }
