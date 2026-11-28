@@ -1,7 +1,10 @@
 // Shared mutable state between the DOM layer and the 3D scene (no React re-renders per frame).
 export type View = 'gate' | 'transition' | 'tailor' | 'walk' | 'wardrobe' | 'grid'
 export const TRANSITION_MS = 2500
-export const WALK_MS = 6400   // premium: a brisk walk through the shop and hidden wardrobe, a quick stair descent (~3.4s), then the golden vault opening is the highlight
+export const WALK_MS = 6400   // the walk's own clock (its choreography is written in these seconds)
+export const WALK_REAL_MS = 5400   // how long it really lasts: the choreography plays WALK_MS/WALK_REAL_MS times faster
+export const WALK_SPEED = WALK_MS / WALK_REAL_MS
+// premium: a brisk walk through the shop and hidden wardrobe, a quick stair descent, then the golden vault opening is the highlight
 export const rig = {
   view: 'gate' as View,
   gateAt: performance.now(),
@@ -10,6 +13,8 @@ export const rig = {
   index: -1,
   dir: 1,
   activeAt: [] as number[],
+  railV: 0,                // rail velocity in pieces per second (smoothed): the scene leans, glows and drifts with it
+  idle: false,             // true while the vault is at rest and the scene draws at a lower rate
   photoK: [] as number[],   // 0..1 per piece: how much of its photo the 3D scene is drawing (the DOM picture covers the rest)
   loadUpTo: 1,
   pointer: { x: 0, y: 0 },
@@ -37,7 +42,7 @@ export const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
 export const smooth = (a: number, b: number, t: number) => { const x = clamp01((t - a) / (b - a)); return x * x * (3 - 2 * x) }
 
 /* seconds into the premium walk, or -1 when not walking */
-export const walkTime = () => rig.walkAt ? (rig.walkFreeze ?? (performance.now() - rig.walkAt) / 1000) : -1
+export const walkTime = () => rig.walkAt ? (rig.walkFreeze ?? (performance.now() - rig.walkAt) / 1000 * WALK_SPEED) : -1
 
 /* ---------- 360 orbit: the wardrobe pieces sit on a ring around the viewer ----------
    d = how many pieces a piece is from the focused spot (float, so it flows while dragging). One shared function drives both the

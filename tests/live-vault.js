@@ -1,0 +1,25 @@
+/* The walk lasts ~5.4 s (was 6.4 s); the vault leans/glows with motion; at rest the scene idles at a lower rate and wakes instantly. */
+const { chromium } = require('playwright'); const { ARGS } = require('./gl'); const sleep = ms => new Promise(r => setTimeout(r, ms))
+let fails = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++ }
+;(async () => {
+  const b = await chromium.launch({ args: ARGS }); const c = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }); const p = await c.newPage()
+  const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()) })
+  await p.goto('http://localhost:8795/?force3d&q=low'); await p.evaluate(() => { sessionStorage.setItem('gf-entered', '1'); sessionStorage.setItem('gf-peek', '1') }); await p.reload(); await sleep(5000)
+  await p.keyboard.press('Escape'); await sleep(300)
+  await p.evaluate(() => { window.__tv = { t0: performance.now(), land: 0 }; const f = () => { if (window.__rig.view === 'wardrobe' && !window.__tv.land) window.__tv.land = performance.now() - window.__tv.t0; else requestAnimationFrame(f) }; requestAnimationFrame(f) })
+  await p.locator('#choice-premium').click(); const t0 = Date.now()
+  await p.waitForFunction(() => window.__tv.land > 0, null, { timeout: 15000 }); const land = await p.evaluate(() => window.__tv.land)
+  console.log('  walk: click -> vault in', Math.round(land), 'ms (was ~6.1 s before the change)'); ok(land < 5600, 'the walk reaches the vault in under 5.6 s (' + Math.round(land) + ' ms)'); void t0
+  await sleep(8000)
+  const k0 = await p.evaluate(() => window.__rig.photoK[0]); ok(k0 > 0.9, 'after a FULL walk (not skipped) the 3D photo is drawn (photoK ' + k0 + ')')
+  const idle1 = await p.evaluate(() => window.__rig.idle); ok(idle1 === true, 'at rest the scene drops to the idle frame rate')
+  await p.keyboard.press('ArrowRight'); await sleep(300); ok(await p.evaluate(() => window.__rig.idle) === false, 'the first key press wakes the scene to full rate')
+  const v = await p.evaluate(() => new Promise(res => { let mx = 0; const f = () => { mx = Math.max(mx, Math.abs(window.__rig.railV)); if (performance.now() - t < 1800) requestAnimationFrame(f); else res(mx) }; const t = performance.now(); requestAnimationFrame(f) }))
+  void v; await sleep(2200)
+  const st = await p.evaluate(() => ({ idx: window.__rig.index, p: +window.__rig.scrollP.toFixed(2), vel: window.__rig.railV }))
+  ok(st.idx === 1 && Math.abs(st.p - 1) < 0.05 && st.vel === 0, 'the piece settles and the velocity returns to zero (' + JSON.stringify(st) + ')')
+  await p.evaluate(() => { window.__mx = 0; const t = performance.now(); const f = () => { window.__mx = Math.max(window.__mx, Math.abs(window.__rig.railV)); if (performance.now() - t < 2200) requestAnimationFrame(f) }; requestAnimationFrame(f) })
+  await p.keyboard.press('ArrowRight'); await sleep(2400); const mx = await p.evaluate(() => window.__mx); ok(mx > 0.3, 'moving the ring produces a velocity for the lean / glow / dust (peak ' + mx.toFixed(2) + ' pieces/s)')
+  await p.screenshot({ path: 'tests/out/live-vault.png' })
+  ok(errs.length === 0, 'no script errors' + (errs.length ? ' -> ' + [...new Set(errs)].slice(0, 3).join(' | ') : ''))
+  await b.close(); process.exit(fails ? 1 : 0) })()

@@ -362,6 +362,7 @@ function CameraRig({ path }: { path: { current: WalkPath | null } }) {
     }
     camera.position.set(x, y, z)
     look.set(lx, ly, lz); camera.lookAt(look)
+    if (rig.view === 'wardrobe') camera.rotateZ(Math.max(-0.03, Math.min(0.03, -rig.railV * 0.012)))   // the camera banks a hair into the turn
     if (roll) camera.rotateZ(roll)
   })
   return null
@@ -988,7 +989,15 @@ function Piece({ i }: { i: number }) {
   const st = useRef({ a: 0, s: 0 })
   const cam = useThree(t => t.camera), gl = useThree(t => t.gl)
   /* the product photo itself, drawn in the 3D scene on the same ring as its niche */
-  const photo = useRef<THREE.Mesh>(null)
+  const photo = useRef<THREE.Mesh>(null), sweep = useRef<THREE.Mesh>(null), shadow = useRef<THREE.Mesh>(null)
+  /* a glint of light that slides across the piece (only where the photo is opaque) each time it lands */
+  const sweepMat = useMemo(() => new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, uniforms: { uMap: { value: null }, uS: { value: -1 }, uO: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: 'uniform sampler2D uMap; uniform float uS; uniform float uO; varying vec2 vUv; void main(){ vec4 c = texture2D(uMap, vUv); float b = exp(-pow((vUv.x * 0.8 + vUv.y * 0.6 - uS) * 5.0, 2.0)); gl_FragColor = vec4(vec3(1.0, 0.86, 0.6) * b * c.a * uO * 0.5, 1.0); }' }), [])
+  /* a soft contact shadow where the piece meets the plinth */
+  const shadowMat = useMemo(() => new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uO: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: 'uniform float uO; varying vec2 vUv; void main(){ float r = length((vUv - 0.5) * 2.0); gl_FragColor = vec4(0.0, 0.0, 0.0, uO * 0.6 * pow(max(0.0, 1.0 - r), 1.5)); }' }), [])
   const pmat = useMemo(() => new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, opacity: 0, alphaMap: edgeMask() }), [])
   const phs = useRef({ src: '', loading: false, ok: false, k: 0, wake: 0 })
   useEffect(() => () => { pmat.map?.dispose(); pmat.dispose(); rig.photoK[i] = 0 }, [pmat, i])
@@ -1019,7 +1028,7 @@ function Piece({ i }: { i: number }) {
     ring.current!.position.set(0, w.floorY + ph + 0.004, PZ + 0.05); ring.current!.scale.set(pr, pr * 0.55, 1)
     const nW = w.pieceW * 1.16, nH = w.pieceH * 1.08
     niche.current!.position.set(0, w.py + w.pieceH * 0.02, PZ - 0.9); niche.current!.scale.set(nW, nH, 1)
-    nm.uniforms.uAsp.value = nW / nH; nm.uniforms.uI.value = (0.35 + 0.9 * s.s) * fd
+    nm.uniforms.uAsp.value = nW / nH; nm.uniforms.uI.value = (0.35 + 0.9 * s.s + Math.min(0.55, Math.abs(rig.railV) * 0.25)) * fd   // the arches glow brighter while the ring turns
     ringMat.color.setRGB(0.5 + 3.0 * s.s, 0.34 + 2.0 * s.s, 0.12 + 0.6 * s.s)
     const coneH = w.pieceH * 1.9
     cone.current!.position.set(0, w.floorY + coneH / 2, PZ - 0.35)
@@ -1050,7 +1059,7 @@ function Piece({ i }: { i: number }) {
           if (c) { loaded.dispose(); tex = new THREE.CanvasTexture(c) }
         }
         tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4
-        pmat.map?.dispose(); pmat.map = tex; pmat.needsUpdate = true
+        pmat.map?.dispose(); pmat.map = tex; pmat.needsUpdate = true; sweepMat.uniforms.uMap.value = tex
         try { gl.initTexture(tex) } catch { /* uploaded on first draw instead */ }
         P.ok = true; P.loading = false
       }, undefined, () => { P.loading = false; P.src = ''; P.wake = performance.now() + 5000 })
@@ -1064,7 +1073,20 @@ function Piece({ i }: { i: number }) {
     const m = photo.current!
     m.visible = op > 0.004
     m.position.set(0, w.py, PZ + 0.02); m.scale.set(w.pieceW, w.pieceH, 1)
-    m.rotation.y = s.a * (Math.sin(tnow / 1000 * 0.7) * 0.07 + rig.pointer.x * 0.05)
+    /* alive: a slow breath and sway at rest, and a lean into the direction of travel while the ring turns */
+    const lean = Math.max(-1, Math.min(1, rig.railV * 0.5)) * fd
+    m.position.y = w.py + Math.sin(tnow / 1000 * 0.9) * w.pieceH * 0.004 * s.a
+    m.rotation.y = s.a * (Math.sin(tnow / 1000 * 0.7) * 0.07 + rig.pointer.x * 0.05) + lean * 0.12
+    m.rotation.z = -lean * 0.035
+    /* the glint, once, as the piece lands */
+    const since = active ? (tnow - (rig.activeAt[i] || tnow)) / 1000 : 9, sw = sweep.current!
+    sweepMat.uniforms.uS.value = -0.3 + 1.9 * smooth(0.15, 1.15, since); sweepMat.uniforms.uO.value = op > 0.5 ? (1 - smooth(1.0, 1.4, since)) : 0
+    sw.visible = sweepMat.uniforms.uO.value > 0.01 && P.ok
+    sw.position.copy(m.position); sw.position.z += 0.004; sw.rotation.copy(m.rotation); sw.scale.copy(m.scale)
+    /* contact shadow on the plinth */
+    const ph2 = w.pieceH * 0.05
+    shadow.current!.visible = op > 0.02; shadowMat.uniforms.uO.value = op
+    shadow.current!.position.set(0, w.floorY + ph2 + 0.003, PZ + 0.05); shadow.current!.scale.set(w.pieceW * 0.34, w.pieceW * 0.2, 1)
   })
   return (
     <group ref={g}>
@@ -1073,7 +1095,9 @@ function Piece({ i }: { i: number }) {
       <mesh ref={cone} material={cm}><cylinderGeometry args={[0.06, 1, 1, 40, 1, true]} /></mesh>
       <mesh ref={pool} rotation={[-Math.PI / 2, 0, 0]} material={pm}><planeGeometry /></mesh>
       <mesh ref={photo} material={pmat} renderOrder={2} visible={false}><planeGeometry /></mesh>
+      <mesh ref={sweep} material={sweepMat} renderOrder={2} visible={false}><planeGeometry /></mesh>
       <mesh ref={plinth} material={plMat} renderOrder={3}><cylinderGeometry args={[1, 1.06, 1, 48]} /></mesh>
+      <mesh ref={shadow} material={shadowMat} rotation={[-Math.PI / 2, 0, 0]} renderOrder={3} visible={false}><planeGeometry /></mesh>
       <mesh ref={ring} material={ringMat} rotation={[-Math.PI / 2, 0, 0]} renderOrder={4}><ringGeometry args={[0.94, 1, 64]} /></mesh>
     </group>
   )
@@ -1092,7 +1116,7 @@ function Dust() {
   useFrame(() => {
     const w = world(), t = now() / 1000
     const cx = rig.view === 'wardrobe' ? camXAt(rig.scrollP, w) : camXAt(0, w)
-    ref.current!.position.set(cx - w.visW * 0.9, w.floorY + (t * 0.02) % 0.2 - 0.1, PZ - 1.2)
+    ref.current!.position.set(cx - w.visW * 0.9 - rig.railV * w.spacing * 0.22, w.floorY + (t * 0.02) % 0.2 - 0.1, PZ - 1.2)   // the dust trails behind the turning ring
     ref.current!.scale.set(w.visW * 1.8, w.visH * 1.1, 3.5)
     ref.current!.rotation.z = Math.sin(t * 0.05) * 0.01
   })
@@ -1109,6 +1133,23 @@ function Stats() {
   return null
 }
 /* GPU health: if the context is lost, frames come out black, or the scene crawls, hand over to the 2D room */
+/* At rest the vault only breathes: draw it at ~30 fps (cooler phone, no heat slowdown mid-swipe) and jump to full rate on the first touch, key, wheel or move. */
+function IdleGovernor() {
+  const { setFrameloop, invalidate } = useThree()
+  useEffect(() => {
+    let last = performance.now(), idle = false, timer = 0
+    const wake = () => { last = performance.now(); if (idle) { idle = false; rig.idle = false; clearInterval(timer); setFrameloop('always') } }
+    const evs = ['pointerdown', 'pointermove', 'touchstart', 'keydown', 'wheel', 'deviceorientation'] as const
+    evs.forEach(e => window.addEventListener(e, wake, { passive: true }))
+    const check = window.setInterval(() => {
+      const n = performance.now()
+      if (Math.abs(rig.railV) > 0.01 || rig.over || rig.view !== 'wardrobe' || walkTime() >= 0 || document.hidden || rig.descentAt && n - rig.descentAt < 4000) { last = n; return }
+      if (!idle && n - last > 1500) { idle = true; rig.idle = true; setFrameloop('demand'); timer = window.setInterval(() => invalidate(), 33) }
+    }, 300)
+    return () => { clearInterval(check); clearInterval(timer); evs.forEach(e => window.removeEventListener(e, wake)); rig.idle = false }
+  }, [setFrameloop, invalidate])
+  return null
+}
 function Health({ onFail }: { onFail: (why: string) => void }) {
   const { gl } = useThree()
   const st = useRef({ lastCheck: 0, black: 0, slow: 0, good: 0, failed: false, px: new Uint8Array(4) })
@@ -1213,14 +1254,14 @@ function Experience({ onFail, paused = false }: { onFail: (why: string) => void;
     }, 400)
     return () => clearInterval(id)
   }, [])
-  const down = () => ask(t => t === 'high' ? 'med' : 'low')
+  const down = () => { if (!rig.idle) ask(t => t === 'high' ? 'med' : 'low') }      // the idle 30 fps is not a slow GPU
   const up = () => ask(t => t === 'low' ? 'med' : 'high')
   return (
     <Canvas className="gl" dpr={dpr} frameloop={paused ? 'demand' : 'always'} gl={{ antialias: false, alpha: false, powerPreference: 'high-performance', stencil: false }}
       camera={{ fov: FOV, near: 0.1, far: 80, position: [0, 0, GATE_CAM] }}
       onCreated={({ gl, scene }) => { gl.setClearColor('#050303'); scene.fog = new THREE.Fog('#050303', 9, 30) }}
       aria-hidden="true">
-      {!HQ && <PerformanceMonitor bounds={() => [45, 58]} flipflops={4} onDecline={down} onIncline={up} onFallback={() => { if (rig.fps && rig.fps < 45) ask(() => 'low') }} />}
+      {!HQ && <PerformanceMonitor bounds={() => [45, 58]} flipflops={4} onDecline={down} onIncline={up} onFallback={() => { if (!rig.idle && rig.fps && rig.fps < 45) ask(() => 'low') }} />}
       <ambientLight intensity={1.2} />
       <CameraRig path={path} />
       <Atmosphere path={path} />
@@ -1233,6 +1274,7 @@ function Experience({ onFail, paused = false }: { onFail: (why: string) => void;
       <ScreenFX />
       <Stats />
       <Health onFail={onFail} />
+      <IdleGovernor />
       <DomSync />
       {T_.dof && <Focus fx={dof} />}
       <EffectComposer multisampling={0} enableNormalPass={false}>

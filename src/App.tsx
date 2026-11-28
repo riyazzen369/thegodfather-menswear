@@ -1,12 +1,12 @@
 import { CartButton, CartDrawer, ShopBuy } from './Shop'
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { withElite } from './Elite'
 import { WA_ICON, CALL_ICON } from './icons'
 import { CONTACT, ITEMS, SAMPLE_PRICES, STORE, TAILOR, vaultCount, vaultSrc, onCatalogue, type Item, type Choice } from './data'
 import Pic, { Mark, preloadPic } from './Pic'
 import Tailor from './Tailor'
 import Grid from './Grid'
-import { rig, TRANSITION_MS, WALK_MS, applyOrbit } from './rig'
+import { rig, TRANSITION_MS, WALK_MS, WALK_REAL_MS, WALK_SPEED, applyOrbit } from './rig'
 
 const Experience = lazy(() => import('./three/Experience'))
 const Inspect = lazy(() => import('./Inspect'))
@@ -133,7 +133,7 @@ export default function App(_: { rev?: number }) {
     rig.activeAt[i] = performance.now()
     if (prev >= 0 && viewRef.current === 'wardrobe') { try { navigator.vibrate?.(6) } catch { /* no haptics */ } }
     rig.loadUpTo = Math.max(rig.loadUpTo, i + 1)
-    setIndexState(i)
+    startTransition(() => setIndexState(i))   // the text re-render must not sit on the first frames of the glide
     const ss = slides()
     const s = ss[i]
     if (s) { s.style.setProperty('--from', (dir >= 0 ? 10 : -10) + '%'); s.classList.remove('is-active'); void s.offsetWidth; s.classList.add('is-active') }
@@ -150,7 +150,7 @@ export default function App(_: { rev?: number }) {
   /* ---- the rail: one position p (in pieces), moved by a critically damped spring or by the finger, written once per frame.
      The track no longer scrolls natively: we set scrollLeft in the same frame the 3D camera and the DOM pieces are placed,
      so pictures and gold niches can never drift apart (that drift was the stutter). Nothing re-renders while it moves. */
-  const car = useRef({ p: 0, v: 0, q: 0, qv: 0, pl: 0, target: 0, drag: false, last: 0, W: 1, maxP: LAST, wrote: -1 })
+  const car = useRef({ p: 0, v: 0, q: 0, qv: 0, pl: 0, pv: 0, target: 0, drag: false, last: 0, W: 1, maxP: LAST, wrote: -1 })
   const railMeasure = useCallback(() => {
     const t = track.current, s0 = slides()[0]; if (!t || !s0) return
     const c = car.current; c.W = s0.offsetWidth || 1; c.maxP = Math.max(0, (t.scrollWidth - t.clientWidth) / c.W)
@@ -177,6 +177,7 @@ export default function App(_: { rev?: number }) {
       if (Math.abs(c.p - c.target) < 0.0008 && Math.abs(c.v) < 0.01 && Math.abs(c.q - c.target) < 0.0008 && Math.abs(c.qv) < 0.01) { c.p = c.q = c.target; c.v = c.qv = 0 }
     }
     c.pl = c.p
+    rig.railV += (((c.p - c.pv) / dt) - rig.railV) * 0.3; c.pv = c.p; if (Math.abs(rig.railV) < 0.003) rig.railV = 0   // how fast the ring is turning, for the lean / glow / dust
     const left = Math.max(0, Math.min(c.maxP, c.p)) * c.W
     if (Math.abs(left - c.wrote) > 0.05) { t.scrollLeft = left; c.wrote = left }
     rig.scrollP = Math.max(0, Math.min(c.maxP, c.p))
@@ -374,7 +375,11 @@ export default function App(_: { rev?: number }) {
     /* the vault is fetched while we walk: first pieces at the size they will be shown */
     const w = garmentW()
     ITEMS.slice(0, 3).forEach(it => preloadPic(vaultSrc(it), w))
-    walkTimers.current.push(window.setTimeout(() => { if (viewRef.current === 'walk') landed() }, WALK_MS - 650))
+    walkTimers.current.push(window.setTimeout(() => { if (viewRef.current === 'walk') landed() }, (WALK_MS - 650) / WALK_SPEED))
+    /* once the walk is really over, forget it: everything in the vault (3D photos, idle rate, rail placement) waits for "no walk running".
+       (Skipping the walk reset this; finishing it normally never did, so the 3D photos silently never appeared after a full walk.) */
+    const startedAt = rig.walkAt
+    window.setTimeout(() => { if (rig.walkAt === startedAt) rig.walkAt = 0 }, WALK_REAL_MS + 500)
   }, [landed])
   const skipWalk = useCallback(() => {
     if (viewRef.current !== 'walk') return
