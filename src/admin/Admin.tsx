@@ -23,13 +23,14 @@ async function smallVariant(photo: Blob): Promise<Blob | null> {
 export default function Admin() {
   const [sb, setSb] = useState<SupabaseClient | null>(null)
   const [session, setSession] = useState<Session | null | undefined>(undefined)
+  const [recovery, setRecovery] = useState(false), [pwOpen, setPwOpen] = useState(false)    // recovery: the visitor arrived from the reset email
   useEffect(() => {
     let off = () => {}
     supa().then(c => {
       if (!c) { setSession(null); return }
       setSb(c)
       c.auth.getSession().then(({ data }) => setSession(data.session))
-      const { data } = c.auth.onAuthStateChange((_e, s) => setSession(s)); off = () => data.subscription.unsubscribe()
+      const { data } = c.auth.onAuthStateChange((e, s) => { if (e === 'PASSWORD_RECOVERY') setRecovery(true); setSession(s) }); off = () => data.subscription.unsubscribe()
     })
     return () => off()
   }, [])
@@ -45,7 +46,8 @@ export default function Admin() {
   if (!liveEnabled) return <Shell><p className="note">This build has no database configured (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY). See docs/ADMIN.md.</p></Shell>
   if (session === undefined || !sb) return <Shell><p className="note">Loading…</p></Shell>
   if (!session) return <Shell><Login sb={sb} /></Shell>
-  return <Shell user={session.user.email} onOut={() => sb.auth.signOut()}>{isAdmin === false
+  if (recovery) return <Shell><PasswordForm sb={sb} mode="recovery" onDone={() => { setRecovery(false); history.replaceState(null, '', location.pathname + location.search) }} /></Shell>
+  return <Shell user={session.user.email} onOut={() => sb.auth.signOut()} onChangePw={() => setPwOpen(true)} extra={pwOpen && <PasswordDialog sb={sb} email={session.user.email ?? ''} onClose={() => setPwOpen(false)} />}>{isAdmin === false
     ? <p className="note" id="not-admin">This account is signed in but is not a catalogue admin, so it cannot change anything. Ask the store owner to add it.</p>
     : <Tabbed sb={sb} />}</Shell>
 }
@@ -69,20 +71,43 @@ function Tabbed({ sb }: { sb: SupabaseClient }) {
   )
 }
 
-function Shell({ children, user, onOut }: { children: React.ReactNode; user?: string; onOut?: () => void }) {
+function Shell({ children, user, onOut, onChangePw, extra }: { children: React.ReactNode; user?: string; onOut?: () => void; onChangePw?: () => void; extra?: React.ReactNode }) {
   return (
     <div className="adm">
       <header className="adm-top">
         <div><span className="adm-mark">The Godfather</span> <span className="adm-sub">Catalogue</span></div>
-        {user && <div className="adm-user"><span>{user}</span> <a href="../" target="_blank" rel="noopener">View site</a> <button type="button" className="ghost" onClick={onOut}>Sign out</button></div>}
+        {user && <div className="adm-user"><span>{user}</span> <a href="../" target="_blank" rel="noopener">View site</a> <button type="button" className="ghost" id="adm-change-pw" onClick={onChangePw}>Change password</button> <button type="button" className="ghost" onClick={onOut}>Sign out</button></div>}
       </header>
       <main>{children}</main>
+      {extra}
     </div>
   )
 }
 
+/* read at load, before the auth client consumes (and clears) the address hash: an expired or already-used reset link lands here */
+const LINK_ERR = (() => { try { const h = new URLSearchParams(location.hash.replace(/^#/, '')); return h.get('error_code') === 'otp_expired' || h.get('error') === 'access_denied' ? 'That reset link has expired or was already used. Request a new one.' : '' } catch { return '' } })()
 function Login({ sb }: { sb: SupabaseClient }) {
   const [email, setEmail] = useState(''), [pw, setPw] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(false)
+  const [forgot, setForgot] = useState(false), [sent, setSent] = useState(false)
+  /* arriving from an expired or already-used reset link */
+  const linkErr = LINK_ERR
+  if (forgot) return (
+    <form className="adm-login" id="adm-forgot" onSubmit={async e => {
+      e.preventDefault(); setBusy(true); setErr('')
+      /* same answer whether or not the address is registered, so this page cannot be used to find out who the admins are */
+      const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: location.origin + location.pathname })
+      setBusy(false)
+      if (error && (error.status === 429 || /rate|too many|seconds/i.test(error.message))) setErr('Too many requests. Wait a few minutes and try again.')
+      else setSent(true)
+    }}>
+      <h1>Reset your password</h1>
+      {sent ? <p className="note" role="status" id="adm-forgot-sent">If that email is registered, we have sent a link to it. It opens this page so you can choose a new password. Check your spam folder too, and note the link works once.</p> : <>
+        <label>Registered email<input id="adm-forgot-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} /></label>
+        {err && <p className="err" role="alert">{err}</p>}
+        <button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send reset link'}</button></>}
+      <p className="note"><button type="button" className="linklike" id="adm-back-signin" onClick={() => { setForgot(false); setSent(false); setErr('') }}>Back to sign in</button></p>
+    </form>
+  )
   return (
     <form className="adm-login" onSubmit={async e => {
       e.preventDefault(); setBusy(true); setErr('')
@@ -90,12 +115,67 @@ function Login({ sb }: { sb: SupabaseClient }) {
       setBusy(false); if (error) setErr(error.message === 'Invalid login credentials' ? 'Wrong email or password.' : error.message)
     }}>
       <h1>Sign in</h1>
+      {linkErr && <p className="err" role="alert" id="adm-link-err">{linkErr}</p>}
       <label>Email<input id="adm-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} /></label>
       <label>Password<input id="adm-password" type="password" autoComplete="current-password" required value={pw} onChange={e => setPw(e.target.value)} /></label>
       {err && <p className="err" role="alert">{err}</p>}
       <button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-      <p className="note">Accounts are created by the store owner. Forgot your password? Ask them to reset it in Supabase.</p>
+      <p className="note"><button type="button" className="linklike" id="adm-forgot-link" onClick={() => { setForgot(true); setErr('') }}>Forgot password?</button> We email a reset link to your admin address. Accounts are created by the store owner.</p>
     </form>
+  )
+}
+
+/* ---- choose a new password: from the reset email (no current password) or while signed in (current password re-checked) ---- */
+const MIN_PW = 12
+function PasswordForm({ sb, mode, email = '', onDone, onCancel }: { sb: SupabaseClient; mode: 'change' | 'recovery'; email?: string; onDone: () => void; onCancel?: () => void }) {
+  const [cur, setCur] = useState(''), [pw, setPw] = useState(''), [pw2, setPw2] = useState(''), [show, setShow] = useState(false)
+  const [others, setOthers] = useState(false), [err, setErr] = useState(''), [busy, setBusy] = useState(false), [ok, setOk] = useState(false)
+  const first = useRef<HTMLInputElement>(null)
+  useEffect(() => { first.current?.focus() }, [])
+  const type = show ? 'text' : 'password'
+  const problem = () => {
+    if (mode === 'change' && !cur) return 'Enter your current password.'
+    if (pw.length < MIN_PW) return `The new password needs at least ${MIN_PW} characters.`
+    if (pw !== pw2) return 'The two new passwords do not match.'
+    if (mode === 'change' && pw === cur) return 'The new password must be different from the current one.'
+    return ''
+  }
+  return (
+    <form className="adm-login adm-pw" id="adm-pw-form" onSubmit={async e => {
+      e.preventDefault(); const pr = problem(); if (pr) return setErr(pr)
+      setBusy(true); setErr('')
+      if (mode === 'change') {
+        const { error } = await sb.auth.signInWithPassword({ email, password: cur })       // proves it is really you before anything changes
+        if (error) { setBusy(false); return setErr(error.message === 'Invalid login credentials' ? 'Your current password is wrong.' : error.message) }
+      }
+      const { error } = await sb.auth.updateUser({ password: pw })
+      if (error) { setBusy(false); return setErr(/same|different/i.test(error.message) ? 'The new password must be different from the old one.' : /weak|short|characters/i.test(error.message) ? 'That password is too weak. Use a longer one with a mix of characters.' : error.message) }
+      if (mode === 'change' && others) { try { await sb.auth.signOut({ scope: 'others' }) } catch { /* the password is changed either way */ } }
+      setBusy(false); setOk(true)
+    }}>
+      <h1 id="adm-pw-title">{mode === 'recovery' ? 'Choose a new password' : 'Change password'}</h1>
+      {ok ? <>
+        <p className="note" role="status" id="adm-pw-done">Password updated. {mode === 'recovery' ? 'You are signed in.' : 'Use it the next time you sign in.'}</p>
+        <button type="button" id="adm-pw-ok" onClick={onDone}>{mode === 'recovery' ? 'Continue' : 'Done'}</button>
+      </> : <>
+        {mode === 'change' && <label>Current password<input ref={first} id="adm-pw-cur" type={type} autoComplete="current-password" value={cur} onChange={e => setCur(e.target.value)} /></label>}
+        <label>New password<input ref={mode === 'recovery' ? first : undefined} id="adm-pw-new" type={type} autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} aria-describedby="adm-pw-hint" /></label>
+        <p className="note" id="adm-pw-hint">At least {MIN_PW} characters. A phrase of several words works well.</p>
+        <label>Confirm new password<input id="adm-pw-new2" type={type} autoComplete="new-password" value={pw2} onChange={e => setPw2(e.target.value)} /></label>
+        <label className="pub"><input type="checkbox" checked={show} onChange={e => setShow(e.target.checked)} /> Show passwords</label>
+        {mode === 'change' && <label className="pub"><input id="adm-pw-others" type="checkbox" checked={others} onChange={e => setOthers(e.target.checked)} /> Sign out of all my other devices</label>}
+        {err && <p className="err" role="alert" id="adm-pw-err">{err}</p>}
+        <div className="row"><button type="submit" id="adm-pw-save" disabled={busy}>{busy ? 'Saving…' : 'Update password'}</button>{onCancel && <button type="button" className="ghost" id="adm-pw-cancel" onClick={onCancel}>Cancel</button>}</div>
+      </>}
+    </form>
+  )
+}
+function PasswordDialog({ sb, email, onClose }: { sb: SupabaseClient; email: string; onClose: () => void }) {
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onClose() } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
+  return (
+    <div className="adm-modal" role="dialog" aria-modal="true" aria-labelledby="adm-pw-title" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <PasswordForm sb={sb} mode="change" email={email} onDone={onClose} onCancel={onClose} />
+    </div>
   )
 }
 
