@@ -153,3 +153,5 @@ table.tx{width:100%;border-collapse:collapse;font-size:.86em}.tx th,.tx td{text-
 .cp-btns{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.cp-btns .pub{margin:0;flex:1}
 .cat-tags{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 12px}.cat-tags legend{font-size:.85em;color:var(--mute);padding:0 6px}
 .cat-tags div{display:flex;gap:6px;flex-wrap:wrap}.cat-tags .on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset;color:var(--gold)}
+
+.colours .colour{display:grid;grid-template-columns:70px 1fr auto;gap:8px;align-items:end;margin:0 0 8px}.colours input[type=color]{width:100%;height:38px;padding:2px}

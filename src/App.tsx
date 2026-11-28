@@ -668,7 +668,7 @@ export default function App(_: { rev?: number }) {
           })}
           <section className="slide final" data-i={LAST} role="group" aria-roledescription="slide" aria-label="You explored the Elite Wardrobe" aria-hidden={!isFinal}>
             <div className="stage" aria-hidden="true"><Mark className="final-logo" glow="neon" sizes="min(70vw, 420px)" /></div>
-            <div className="copy">
+            <div className="copy" inert={!isFinal}>
               <h2 className="name line" id="final-title" style={{ '--i': 0 } as React.CSSProperties}>You explored our handpicked niche {withElite('Elite')} wearables.</h2>
               <button type="button" className="explore line" id="explore-collection" style={{ '--i': 1 } as React.CSSProperties} tabIndex={isFinal ? 0 : -1} onClick={() => toGrid('all')}>
                 <span className="explore-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"><rect x="6" y="6" width="15" height="15" rx="2.5" /><rect x="27" y="6" width="15" height="15" rx="2.5" /><rect x="6" y="27" width="15" height="15" rx="2.5" /><rect x="27" y="27" width="15" height="15" rx="2.5" /></svg></span>
@@ -765,7 +765,7 @@ export default function App(_: { rev?: number }) {
             <dl className="specs" id="specs">
               <dt>Fabric</dt><dd>{it.fabric}</dd>
               <dt>Fit</dt><dd>{it.details.fit}</dd>
-              <dt>Colours</dt><dd><span className="swatches">{it.colours.map(c => <span className="swatch" key={c.name}><b style={{ background: c.hex }} />{c.name}</span>)}</span></dd>
+              {it.colours.length > 0 && <><dt>Colours</dt><dd><span className="swatches">{it.colours.map(c => <span className="swatch" key={c.name}><b style={{ background: c.hex }} />{c.name}</span>)}</span></dd></>}
               <dt>Made to measure</dt><dd>{it.details.madeToMeasure}</dd>
               <dt>Delivery</dt><dd>{it.details.delivery}</dd>
               {it.price != null && SAMPLE_PRICES && <><dt>Price</dt><dd>Sample price, subject to change</dd></>}

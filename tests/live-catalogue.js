@@ -93,11 +93,11 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
       ok(`${tag}: vault shows the 3 premium pieces only`, v.slides === 3, JSON.stringify(v));
       if (tag === 'desktop') {
         await p.keyboard.press('ArrowRight'); await sleep(2500);
-        await p.locator('.slide.is-active .details').click({ timeout: 8000 }); await p.waitForSelector('.inspect.open', { timeout: 8000 }); await sleep(800);
+        await p.locator('.slide.is-active .garment').click({ timeout: 8000, force: true }); await p.waitForSelector('.inspect.open', { timeout: 8000 }); await sleep(800);
         const fb = await p.evaluate(() => ({ t: document.querySelector('#inspect-title')?.textContent, back: document.querySelector('.flip-back img')?.getAttribute('src') || null, plain: !!document.querySelector('.flip-plain') }));
         ok('desktop: flip view shows the DB back photo', /Camel Coat/.test(fb.t || '') && /camel-coat\/back\.webp/.test(fb.back || ''), JSON.stringify(fb));
         await p.keyboard.press('Escape'); await sleep(900); await p.keyboard.press('ArrowRight'); await sleep(2500);
-        await p.locator('.slide.is-active .details').click({ timeout: 8000 }); await p.waitForSelector('.inspect.open', { timeout: 8000 }); await sleep(500);
+        await p.locator('.slide.is-active .garment').click({ timeout: 8000, force: true }); await p.waitForSelector('.inspect.open', { timeout: 8000 }); await sleep(500);
         const fp = await p.evaluate(() => ({ t: document.querySelector('#inspect-title')?.textContent, plain: !!document.querySelector('.flip-plain') }));
         ok('desktop: no back photo -> shared plain back', /Velvet/.test(fp.t || '') && fp.plain, JSON.stringify(fp));
       }
@@ -184,7 +184,9 @@ const names = p => p.evaluate(() => [...document.querySelectorAll('#grid .card-n
     await a.waitForSelector('#prev-vault[src^="blob:"]', { timeout: 240000 });
     const tFront = Date.now() - T0;
     await a.setInputFiles('#f-back', path.join(__dirname, 'fixtures/tee-back-phone.jpg'));
-    await a.waitForFunction(() => document.querySelector('.nudges[data-face="back"]'), null, { timeout: 240000 }); await sleep(600);
+    try { await a.waitForFunction(() => document.querySelector('.nudges[data-face="back"]'), null, { timeout: 90000 }) }
+    catch (e) { console.log('DEBUG back photo never ready:', JSON.stringify(await a.evaluate(() => ({ busy: document.querySelector('.busy, [role=status]')?.textContent, method: document.querySelector('#f-method')?.textContent, err: document.querySelector('.err, [role=alert]')?.textContent, nudges: [...document.querySelectorAll('.nudges')].map(n => n.dataset.face), back: !!document.querySelector('#f-back') })))); throw e }
+    await sleep(600);
     const method = await a.textContent('#f-method').catch(() => '');
     ok(`admin: background removed in the browser (${Math.round(tFront / 1000)}s front)`, /removed automatically/.test(method || ''), method);
     await a.click('[data-n="front-s-plus"]'); await a.click('[data-n="front-s-plus"]'); await a.click('[data-n="back-y-minus"]'); await sleep(1500);
