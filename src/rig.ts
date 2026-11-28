@@ -14,6 +14,7 @@ export const rig = {
   dir: 1,
   activeAt: [] as number[],
   railV: 0,                // rail velocity in pieces per second (smoothed): the scene leans, glows and drifts with it
+  glPaused: false,         // the 3D canvas is covered (inspect, grid ...): it must not be woken or ticked by the idle governor
   idle: false,             // true while the vault is at rest and the scene draws at a lower rate
   photoK: [] as number[],   // 0..1 per piece: how much of its photo the 3D scene is drawing (the DOM picture covers the rest)
   loadUpTo: 1,

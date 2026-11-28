@@ -16,8 +16,8 @@ async function run(name, vp, mobile) {
   // contacts dialog
   if (await p.locator('#nav-contacts').isVisible()) { await p.locator('#nav-contacts').click({ timeout: 4000 }).catch(() => {}); await sleep(600); await shot('03-contacts'); ok(await p.locator('#contact-wa').isVisible(), name + ': contacts dialog opens'); await p.keyboard.press('Escape'); await sleep(500) } else console.log('  (nav hidden at this width: ' + name + ')')
   // premium walk -> vault
-  await p.locator('#choice-premium').click(); await sleep(2500); await shot('04-walk-a'); s = await st(); ok(s.view === 'walk' || s.view === 'transition', name + ': premium walk starts (' + s.view + ')')
-  await sleep(6000); await shot('05-walk-b'); await p.locator('#walk-skip').click({ timeout: 3000 }).catch(() => {}); await sleep(5000); await shot('06-vault'); s = await st(); ok(s.view === 'wardrobe', name + ': arrives in the vault (' + s.view + ')'); ok(s.gl, name + ': 3D canvas mounted')
+  await p.locator('#choice-premium').click(); await sleep(1000); await shot('04-walk-a'); s = await st(); ok(s.view === 'walk' || s.view === 'transition', name + ': premium walk starts (' + s.view + ')')
+  await sleep(1500); await shot('05-walk-b'); await p.waitForFunction(() => window.__rig.view === 'wardrobe', null, { timeout: 20000 }).catch(() => {}); await sleep(5000); await shot('06-vault'); s = await st(); ok(s.view === 'wardrobe', name + ': arrives in the vault (' + s.view + ')'); ok(s.gl, name + ': 3D canvas mounted')
   // vault movement: next x3, prev x1, with settle checks
   for (let i = 1; i <= 3; i++) { await p.keyboard.press('ArrowRight'); await sleep(2200); s = await st(); ok(s.idx === i && Math.abs(s.p - i) < 0.05, name + `: next -> piece ${i + 1} settled (idx ${s.idx}, p ${s.p})`) ; if (i === 2) await shot('07-vault-3') }
   await p.keyboard.press('ArrowLeft'); await sleep(2200); s = await st(); ok(s.idx === 2, name + ': prev -> idx 2'); ok(s.sw <= s.cw + 1, name + ': no horizontal overflow in vault')

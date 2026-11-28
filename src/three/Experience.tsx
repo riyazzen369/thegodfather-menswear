@@ -1138,11 +1138,12 @@ function IdleGovernor() {
   const { setFrameloop, invalidate } = useThree()
   useEffect(() => {
     let last = performance.now(), idle = false, timer = 0
-    const wake = () => { last = performance.now(); if (idle) { idle = false; rig.idle = false; clearInterval(timer); setFrameloop('always') } }
+    const wake = () => { last = performance.now(); if (idle) { idle = false; rig.idle = false; clearInterval(timer); setFrameloop(rig.glPaused ? 'demand' : 'always') } }
     const evs = ['pointerdown', 'pointermove', 'touchstart', 'keydown', 'wheel', 'deviceorientation'] as const
     evs.forEach(e => window.addEventListener(e, wake, { passive: true }))
     const check = window.setInterval(() => {
       const n = performance.now()
+      if (rig.glPaused) { if (idle) wake(); last = n; return }       // covered by the inspect view / grid: nothing to draw, nothing to idle
       if (Math.abs(rig.railV) > 0.01 || rig.over || rig.view !== 'wardrobe' || walkTime() >= 0 || document.hidden || rig.descentAt && n - rig.descentAt < 4000) { last = n; return }
       if (!idle && n - last > 1500) { idle = true; rig.idle = true; setFrameloop('demand'); timer = window.setInterval(() => invalidate(), 33) }
     }, 300)
@@ -1220,6 +1221,7 @@ const TIER = {
 } as const
 export default memo(Experience)
 function Experience({ onFail, paused = false }: { onFail: (why: string) => void; paused?: boolean }) {
+  rig.glPaused = paused
   const [tier, setTier] = useState<Tier>(Q ?? 'med')
   const T_ = TIER[tier], low = tier === 'low'
   const dpr = Math.min(T_.dpr, window.devicePixelRatio || 1)
